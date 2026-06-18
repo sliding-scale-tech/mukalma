@@ -1,0 +1,9 @@
+{
+	"extends": "@mukalma/typescript-config/tsconfig.base.json",
+	"compilerOptions": {
+		"lib": ["ESNext"],
+		"types": [],
+		"noEmit": true
+	},
+	"include": ["src"]
+}
