@@ -1,5 +1,4 @@
 import { ClerkProvider, useAuth } from "@clerk/react-router";
-import { clerkMiddleware, rootAuthLoader } from "@clerk/react-router/server";
 
 import "./index.css";
 import { Toaster } from "@mukalma/ui/components/sonner";
@@ -16,10 +15,6 @@ import {
 
 import type { Route } from "./+types/root";
 import { ThemeProvider } from "./components/theme-provider";
-
-export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
-
-export const loader = (args: Route.LoaderArgs) => rootAuthLoader(args);
 
 export const links: Route.LinksFunction = () => [
 	{ rel: "preconnect", href: "https://fonts.googleapis.com" },
@@ -52,12 +47,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	);
 }
 
-export default function App({ loaderData }: Route.ComponentProps) {
+export default function App() {
 	const convex = new ConvexReactClient(
 		import.meta.env.VITE_CONVEX_URL as string,
 	);
 	return (
-		<ClerkProvider loaderData={loaderData}>
+		<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
 			<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 				<ThemeProvider
 					attribute="class"
