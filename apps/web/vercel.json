@@ -1,5 +1,5 @@
 {
-	"buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter web build",
+	"buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter @mukalma/widget-loader build && cp packages/widget-loader/dist/loader.js apps/web/public/loader.js && pnpm --filter web build",
 	"installCommand": "echo skip",
 	"outputDirectory": "build/client",
 	"rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
