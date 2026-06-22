@@ -4,12 +4,10 @@ import { ConvexError } from "convex/values";
 import { internal } from "./_generated/api";
 import { action } from "./_generated/server";
 
-function getWahaConfig() {
+function getWahaConfig(): { baseUrl: string; apiKey: string } | null {
 	const baseUrl = process.env.WAHA_BASE_URL;
 	const apiKey = process.env.WAHA_API_KEY;
-	if (!baseUrl || !apiKey) {
-		throw new Error("WAHA_BASE_URL or WAHA_API_KEY is not configured");
-	}
+	if (!baseUrl || !apiKey) return null;
 	return { baseUrl, apiKey };
 }
 
@@ -17,12 +15,18 @@ async function wahaFetch(
 	path: string,
 	options: RequestInit = {},
 ): Promise<Response> {
-	const { baseUrl, apiKey } = getWahaConfig();
-	return await fetch(`${baseUrl}${path}`, {
+	const config = getWahaConfig();
+	if (!config) {
+		throw new ConvexError({
+			code: "NOT_CONFIGURED",
+			message: "WAHA_BASE_URL or WAHA_API_KEY is not configured",
+		});
+	}
+	return await fetch(`${config.baseUrl}${path}`, {
 		...options,
 		headers: {
 			"Content-Type": "application/json",
-			"X-Api-Key": apiKey,
+			"X-Api-Key": config.apiKey,
 			...options.headers,
 		},
 	});
@@ -31,6 +35,13 @@ async function wahaFetch(
 export const startWhatsAppSession = action({
 	args: {},
 	handler: async (ctx): Promise<{ sessionName: string }> => {
+		if (!getWahaConfig()) {
+			throw new ConvexError({
+				code: "NOT_CONFIGURED",
+				message: "WhatsApp integration is not configured on this server",
+			});
+		}
+
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity)
 			throw new ConvexError({
@@ -88,6 +99,8 @@ export const startWhatsAppSession = action({
 export const getWhatsAppQR = action({
 	args: {},
 	handler: async (ctx): Promise<{ qr: string | null; status: string }> => {
+		if (!getWahaConfig()) return { qr: null, status: "disconnected" };
+
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity)
 			throw new ConvexError({
@@ -139,6 +152,8 @@ export const getWhatsAppQR = action({
 export const checkWhatsAppStatus = action({
 	args: {},
 	handler: async (ctx): Promise<{ status: string }> => {
+		if (!getWahaConfig()) return { status: "disconnected" };
+
 		const identity = await ctx.auth.getUserIdentity();
 		if (!identity)
 			throw new ConvexError({

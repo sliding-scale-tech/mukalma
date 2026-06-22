@@ -11,7 +11,6 @@ import {
 } from "react-router";
 
 import type { Route } from "./+types/root";
-import { ThemeProvider } from "./components/theme-provider";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
@@ -30,7 +29,7 @@ export const links: Route.LinksFunction = () => [
 
 export function Layout({ children }: { children: React.ReactNode }) {
 	return (
-		<html lang="en">
+		<html lang="en" className="dark">
 			<head>
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -49,15 +48,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App() {
 	return (
 		<ConvexProvider client={convex}>
-			<ThemeProvider
-				attribute="class"
-				defaultTheme="light"
-				disableTransitionOnChange
-				storageKey="mukalma-web-theme"
-			>
-				<Outlet />
-				<Toaster richColors />
-			</ThemeProvider>
+			<Outlet />
+			<Toaster richColors />
 		</ConvexProvider>
 	);
 }

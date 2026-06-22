@@ -15,11 +15,19 @@ function formatTime(ts: number): string {
 	});
 }
 
-export function ChatMessageBubble({ message }: { message: ChatMessage }) {
+export function ChatMessageBubble({
+	message,
+	displayText,
+	isAnimating,
+}: {
+	message: ChatMessage;
+	displayText?: string;
+	isAnimating?: boolean;
+}) {
 	if (message.senderType === "system") {
 		return (
-			<div className="flex justify-center py-2">
-				<span className="text-muted-foreground text-xs italic">
+			<div className="flex justify-center py-1">
+				<span className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400">
 					{message.content}
 				</span>
 			</div>
@@ -27,46 +35,54 @@ export function ChatMessageBubble({ message }: { message: ChatMessage }) {
 	}
 
 	const isCustomer = message.senderType === "customer";
+	const text = displayText ?? message.content;
 
 	return (
 		<div
-			className={cn("flex gap-2", isCustomer ? "justify-end" : "justify-start")}
+			className={cn(
+				"flex items-end gap-2.5 px-1",
+				isCustomer ? "flex-row-reverse" : "flex-row",
+			)}
 		>
 			{!isCustomer && (
-				<div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+				<div className="mb-5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-violet-600">
 					{message.senderType === "bot" ? (
-						<Bot className="h-4 w-4" />
+						<Bot className="h-3.5 w-3.5 text-white" />
 					) : (
-						<Headset className="h-4 w-4" />
+						<Headset className="h-3.5 w-3.5 text-white" />
 					)}
 				</div>
 			)}
-			<div className="flex max-w-[75%] flex-col gap-1">
+
+			<div
+				className={cn(
+					"flex max-w-[78%] flex-col gap-1",
+					isCustomer ? "items-end" : "items-start",
+				)}
+			>
 				{!isCustomer && (
-					<span className="text-muted-foreground text-xs">
+					<span className="px-1 font-medium text-[11px] text-zinc-500">
 						{message.senderType === "bot" ? "AI Assistant" : "Support Agent"}
 					</span>
 				)}
 				<div
 					className={cn(
-						"rounded-2xl px-3 py-2 text-sm",
+						"rounded-2xl px-4 py-2.5 text-sm leading-relaxed",
 						isCustomer
-							? "rounded-br-sm bg-primary text-primary-foreground"
-							: "rounded-bl-sm bg-muted",
+							? "rounded-tr-sm bg-violet-600 text-white"
+							: "rounded-tl-sm bg-zinc-800 text-zinc-100",
 					)}
 				>
-					{message.content.split("\n").map((line, i) => (
+					{text.split("\n").map((line, i) => (
 						<p key={`${message._id}-${i}`} className={i > 0 ? "mt-1" : ""}>
-							{line}
+							{line || " "}
 						</p>
 					))}
-				</div>
-				<span
-					className={cn(
-						"text-muted-foreground text-xs",
-						isCustomer ? "text-right" : "text-left",
+					{isAnimating && (
+						<span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-current align-middle opacity-70" />
 					)}
-				>
+				</div>
+				<span className="px-1 text-[11px] text-zinc-600">
 					{formatTime(message.createdAt)}
 				</span>
 			</div>
