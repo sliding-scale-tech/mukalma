@@ -1,1 +1,20 @@
-# WAHA — one session per tenant. See PLAN.md §3.5
+services:
+  waha:
+    image: devlikeapro/waha
+    container_name: mukalma-waha
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WAHA_DASHBOARD_ENABLED: "true"
+      WAHA_DASHBOARD_USERNAME: ${WAHA_DASHBOARD_USERNAME:-admin}
+      WAHA_DASHBOARD_PASSWORD: ${WAHA_DASHBOARD_PASSWORD:-admin}
+      WHATSAPP_API_KEY: ${WAHA_API_KEY}
+      WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_URL:-http://host.docker.internal:3210/waha/webhook}
+      WHATSAPP_HOOK_EVENTS: message
+    volumes:
+      - waha_sessions:/app/.sessions
+
+volumes:
+  waha_sessions:

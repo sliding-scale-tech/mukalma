@@ -1,3 +1,8 @@
+import { useAuth } from "@clerk/react-router";
+import { Navigate } from "react-router";
+
 export default function IndexPage() {
-	return <main className="p-4">{/* redirect to /dashboard */}</main>;
+	const { isLoaded, isSignedIn } = useAuth();
+	if (!isLoaded) return null;
+	return <Navigate to={isSignedIn ? "/dashboard" : "/login"} replace />;
 }

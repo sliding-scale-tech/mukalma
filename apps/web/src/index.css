@@ -1,1 +1,8 @@
-@import "@my-better-t-app/ui/globals.css";
+@import "@mukalma/ui/globals.css";
+
+/* Widget always runs in dark mode with a violet accent */
+.dark {
+	--primary: oklch(0.49 0.27 277);
+	--primary-foreground: oklch(0.985 0 0);
+	--ring: oklch(0.49 0.27 277);
+}
