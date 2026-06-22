@@ -4,4 +4,5 @@ export const SESSION_STORAGE_KEYS = {
 	sessionId: "mukalma_session_id",
 	token: "mukalma_session_token",
 	expiresAt: "mukalma_expires_at",
+	tenantId: "mukalma_tenant_id",
 } as const;

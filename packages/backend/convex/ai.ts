@@ -2,8 +2,15 @@
 
 import { RAG_SIMILARITY_THRESHOLD } from "@mukalma/shared/constants/embeddings";
 import { v } from "convex/values";
-import { type ChatMessage, generateChatReply } from "../lib/gemini";
-import { buildSystemPrompt } from "../lib/systemPrompt";
+import {
+	type ChatMessage,
+	generateChatReply,
+	generateRagReply,
+} from "../lib/gemini";
+import {
+	buildChatSystemPrompt,
+	buildRagSystemPrompt,
+} from "../lib/systemPrompt";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
@@ -21,6 +28,7 @@ export const generateReply = internalAction({
 			return;
 		}
 
+		// Debounce: abort if a newer customer message arrived while we waited.
 		const hasNewer = await ctx.runQuery(
 			internal.messagesInternal.hasNewerCustomerMessage,
 			{
@@ -28,9 +36,7 @@ export const generateReply = internalAction({
 				afterMessageId: args.triggeringMessageId,
 			},
 		);
-		if (hasNewer) {
-			return;
-		}
+		if (hasNewer) return;
 
 		const tenant = await ctx.runQuery(internal.threadsInternal.getTenantById, {
 			tenantId: args.tenantId,
@@ -53,6 +59,7 @@ export const generateReply = internalAction({
 				.find((m) => m.senderType === "customer");
 			const lastCustomerMessage = lastCustomerMsg?.content ?? "";
 
+			// --- Escalation keyword check ---
 			const escalationKeywords: string[] =
 				tenant.settings.escalationKeywords?.map((k: string) =>
 					k.toLowerCase(),
@@ -71,6 +78,63 @@ export const generateReply = internalAction({
 				return;
 			}
 
+			// Build conversation history (most recent 20 messages, no system msgs).
+			const history: ChatMessage[] = recentMessages
+				.slice(0, -1)
+				.map((m: { senderType: string; content: string }) => ({
+					role:
+						m.senderType === "customer"
+							? ("user" as const)
+							: ("model" as const),
+					content: m.content,
+				}));
+
+			// --- Step 1: Chat model (greetings + general replies) ---
+			const chatSystemPrompt = buildChatSystemPrompt({
+				tenantName: tenant.name,
+				customPrompt: tenant.settings.aiSystemPrompt,
+			});
+
+			const chatReply = await generateChatReply(
+				chatSystemPrompt,
+				history,
+				lastCustomerMessage,
+			);
+
+			// Chat model handled it — no documents needed.
+			if (!chatReply.includes("[NEEDS_DOCS]")) {
+				if (chatReply.includes("[ESCALATE]")) {
+					await ctx.runMutation(internal.threadsInternal.escalateThread, {
+						threadId: args.threadId,
+						tenantId: args.tenantId,
+						reason: "AI determined it cannot answer",
+					});
+					return;
+				}
+
+				const botMessageId = await ctx.runMutation(
+					internal.messagesInternal.insertBotMessage,
+					{
+						threadId: args.threadId,
+						tenantId: args.tenantId,
+						content: chatReply,
+						deliveryStatus:
+							thread.channel === "whatsapp" ? ("sent" as const) : undefined,
+					},
+				);
+
+				if (thread.channel === "whatsapp") {
+					await ctx.scheduler.runAfter(0, internal.whatsapp.sendText, {
+						threadId: args.threadId,
+						tenantId: args.tenantId,
+						messageId: botMessageId,
+						text: chatReply,
+					});
+				}
+				return;
+			}
+
+			// --- Step 2: RAG model (document retrieval + grounded answer) ---
 			const ragResults = await ctx.runAction(
 				internal.embeddingsSearch.searchSimilar,
 				{
@@ -84,16 +148,17 @@ export const generateReply = internalAction({
 					r.score >= RAG_SIMILARITY_THRESHOLD,
 			);
 
+			// Zero relevant chunks with no fallback → escalate immediately.
 			if (relevantChunks.length === 0) {
 				await ctx.runMutation(internal.threadsInternal.escalateThread, {
 					threadId: args.threadId,
 					tenantId: args.tenantId,
-					reason: "No relevant knowledge base content found",
+					reason: "No relevant documents found",
 				});
 				return;
 			}
 
-			const systemPrompt = buildSystemPrompt({
+			const ragSystemPrompt = buildRagSystemPrompt({
 				tenantName: tenant.name,
 				customPrompt: tenant.settings.aiSystemPrompt,
 				contextChunks: relevantChunks.map(
@@ -101,23 +166,13 @@ export const generateReply = internalAction({
 				),
 			});
 
-			const history: ChatMessage[] = recentMessages
-				.slice(0, -1)
-				.map((m: { senderType: string; content: string }) => ({
-					role:
-						m.senderType === "customer"
-							? ("user" as const)
-							: ("model" as const),
-					content: m.content,
-				}));
-
-			const replyText = await generateChatReply(
-				systemPrompt,
+			const ragReply = await generateRagReply(
+				ragSystemPrompt,
 				history,
 				lastCustomerMessage,
 			);
 
-			if (replyText.includes("[ESCALATE]")) {
+			if (ragReply.includes("[ESCALATE]")) {
 				await ctx.runMutation(internal.threadsInternal.escalateThread, {
 					threadId: args.threadId,
 					tenantId: args.tenantId,
@@ -131,7 +186,7 @@ export const generateReply = internalAction({
 				{
 					threadId: args.threadId,
 					tenantId: args.tenantId,
-					content: replyText,
+					content: ragReply,
 					deliveryStatus:
 						thread.channel === "whatsapp" ? ("sent" as const) : undefined,
 				},
@@ -142,8 +197,19 @@ export const generateReply = internalAction({
 					threadId: args.threadId,
 					tenantId: args.tenantId,
 					messageId: botMessageId,
-					text: replyText,
+					text: ragReply,
 				});
+			}
+		} catch (error) {
+			console.error("ai.generateReply failed:", error);
+			try {
+				await ctx.runMutation(internal.threadsInternal.escalateThread, {
+					threadId: args.threadId,
+					tenantId: args.tenantId,
+					reason: "AI service unavailable",
+				});
+			} catch {
+				// Escalation itself failed — nothing more we can do.
 			}
 		} finally {
 			await ctx.runMutation(internal.threadsInternal.setAiTyping, {

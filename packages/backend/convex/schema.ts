@@ -119,7 +119,7 @@ export default defineSchema({
 	})
 		.vectorIndex("by_embedding", {
 			vectorField: "embedding",
-			dimensions: 768,
+			dimensions: 3072,
 			filterFields: ["tenantId"],
 		})
 		.index("by_document", ["documentId"]),

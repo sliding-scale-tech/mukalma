@@ -26,25 +26,29 @@ export function LoginForm() {
 
 	const onSubmit = form.handleSubmit(async (values) => {
 		setError(null);
-		const { error: pwError } = await signIn.password({
-			identifier: values.email,
-			password: values.password,
-		});
-		if (pwError) {
-			setError(pwError.message ?? "Sign in failed");
-			return;
-		}
-		if (signIn.status === "complete") {
-			await signIn.finalize({
-				navigate: ({ decorateUrl }) => {
-					const url = decorateUrl("/dashboard");
-					if (url.startsWith("http")) {
-						window.location.href = url;
-					} else {
-						navigate(url);
-					}
-				},
+		try {
+			const { error: signInError } = await signIn.password({
+				emailAddress: values.email,
+				password: values.password,
 			});
+			if (signInError) {
+				setError(signInError.message ?? "Sign in failed");
+				return;
+			}
+			if (signIn.status === "complete") {
+				await signIn.finalize({
+					navigate: ({ decorateUrl }) => {
+						const url = decorateUrl("/dashboard");
+						if (url.startsWith("http")) {
+							window.location.href = url;
+						} else {
+							navigate(url);
+						}
+					},
+				});
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Sign in failed");
 		}
 	});
 

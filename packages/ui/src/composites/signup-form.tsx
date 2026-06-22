@@ -29,42 +29,46 @@ export function SignupForm() {
 
 	const onSubmit = form.handleSubmit(async (values) => {
 		setError(null);
-		const { error: createError } = await signUp.password({
-			emailAddress: values.email,
-			password: values.password,
-		});
-		if (createError) {
-			setError(createError.message ?? "Sign up failed");
-			return;
+		try {
+			const { error: createError } = await signUp.password({
+				emailAddress: values.email,
+				password: values.password,
+			});
+			if (createError) {
+				setError(createError.message ?? "Sign up failed");
+				return;
+			}
+			await signUp.verifications.sendEmailCode();
+			setPendingVerification(true);
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Sign up failed");
 		}
-		const { error: sendError } = await signUp.verifications.sendEmailCode();
-		if (sendError) {
-			setError(sendError.message ?? "Failed to send verification code");
-			return;
-		}
-		setPendingVerification(true);
 	});
 
 	const onVerify = async () => {
 		setError(null);
-		const { error: verifyError } = await signUp.verifications.verifyEmailCode({
-			code,
-		});
-		if (verifyError) {
-			setError(verifyError.message ?? "Verification failed");
-			return;
-		}
-		if (signUp.status === "complete") {
-			await signUp.finalize({
-				navigate: ({ decorateUrl }) => {
-					const url = decorateUrl("/onboarding");
-					if (url.startsWith("http")) {
-						window.location.href = url;
-					} else {
-						navigate(url);
-					}
-				},
-			});
+		try {
+			const { error: verifyError } = await signUp.verifications.verifyEmailCode(
+				{ code },
+			);
+			if (verifyError) {
+				setError(verifyError.message ?? "Verification failed");
+				return;
+			}
+			if (signUp.status === "complete") {
+				await signUp.finalize({
+					navigate: ({ decorateUrl }) => {
+						const url = decorateUrl("/onboarding");
+						if (url.startsWith("http")) {
+							window.location.href = url;
+						} else {
+							navigate(url);
+						}
+					},
+				});
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Verification failed");
 		}
 	};
 
@@ -119,6 +123,11 @@ export function SignupForm() {
 							type="password"
 							{...form.register("password")}
 						/>
+						{form.formState.errors.password && (
+							<p className="text-destructive text-sm">
+								{form.formState.errors.password.message}
+							</p>
+						)}
 					</div>
 					<div className="grid gap-2">
 						<Label htmlFor="confirmPassword">Confirm password</Label>

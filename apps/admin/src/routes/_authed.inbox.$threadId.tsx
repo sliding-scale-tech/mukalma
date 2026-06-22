@@ -47,7 +47,7 @@ export default function InboxThreadPage() {
 
 	const [input, setInput] = useState("");
 	const [sending, setSending] = useState(false);
-	const scrollRef = useRef<HTMLDivElement>(null);
+	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (threadId && thread && thread.agentUnreadCount > 0) {
@@ -56,11 +56,8 @@ export default function InboxThreadPage() {
 	}, [threadId, thread, markRead]);
 
 	useEffect(() => {
-		const el = scrollRef.current;
-		if (el) {
-			el.scrollTop = el.scrollHeight;
-		}
-	}, []);
+		bottomRef.current?.scrollIntoView();
+	}, [messages]);
 
 	const handleSend = useCallback(async () => {
 		const trimmed = input.trim();
@@ -121,7 +118,7 @@ export default function InboxThreadPage() {
 	return (
 		<div className="flex h-[calc(100vh-8rem)] flex-col">
 			{/* Header */}
-			<div className="flex items-center justify-between border-b pb-4">
+			<div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
 				<div className="flex items-center gap-3">
 					<Button
 						variant="ghost"
@@ -131,7 +128,7 @@ export default function InboxThreadPage() {
 						<ArrowLeft className="h-4 w-4" />
 					</Button>
 					<div>
-						<div className="flex items-center gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							<h2 className="font-semibold text-lg">
 								{thread.customerDisplayName ?? "Customer"}
 							</h2>
@@ -156,7 +153,7 @@ export default function InboxThreadPage() {
 					</div>
 				</div>
 
-				<div className="flex items-center gap-2">
+				<div className="flex flex-wrap items-center gap-2">
 					{!isClosed && (
 						<>
 							<Button
@@ -229,7 +226,7 @@ export default function InboxThreadPage() {
 			</div>
 
 			{/* Messages */}
-			<ScrollArea className="flex-1 px-2" ref={scrollRef}>
+			<ScrollArea className="flex-1 px-2">
 				<div className="space-y-3 py-4">
 					{messages.map((msg) => (
 						<ChatMessageBubble
@@ -250,15 +247,20 @@ export default function InboxThreadPage() {
 							</span>
 						</div>
 					)}
+					<div ref={bottomRef} />
 				</div>
 			</ScrollArea>
 
-			{/* Reply input */}
+			{/* Reply input — available for open AND escalated threads */}
 			{!isClosed && (
 				<div className="border-t pt-4">
 					<div className="flex gap-2">
 						<Textarea
-							placeholder="Type a reply..."
+							placeholder={
+								thread.status === "escalated"
+									? "Reply to customer..."
+									: "Type a reply..."
+							}
 							value={input}
 							onChange={(e) => setInput(e.target.value)}
 							onKeyDown={handleKeyDown}
@@ -272,7 +274,11 @@ export default function InboxThreadPage() {
 							onClick={handleSend}
 							disabled={!input.trim() || sending}
 						>
-							<Send className="h-4 w-4" />
+							{sending ? (
+								<Loader2 className="h-4 w-4 animate-spin" />
+							) : (
+								<Send className="h-4 w-4" />
+							)}
 						</Button>
 					</div>
 				</div>

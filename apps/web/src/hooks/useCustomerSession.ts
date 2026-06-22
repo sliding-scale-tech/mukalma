@@ -32,9 +32,14 @@ export function useCustomerSession(tenantSlug: string | null): SessionState {
 
 		const stored = getStoredSession();
 		if (stored) {
-			// We have a stored session — use it (tenantId will be fetched from the thread)
-			// We don't store tenantId in localStorage, so we need to recreate if we don't have it
-			// For simplicity, always create fresh if we can't validate
+			setState({
+				sessionId: stored.sessionId,
+				token: stored.token,
+				expiresAt: stored.expiresAt,
+				tenantId: stored.tenantId as Id<"tenants">,
+				isReady: true,
+			});
+			return;
 		}
 
 		createSession({ tenantSlug })
@@ -43,6 +48,7 @@ export function useCustomerSession(tenantSlug: string | null): SessionState {
 					sessionId: result.sessionId,
 					token: result.token,
 					expiresAt: result.expiresAt,
+					tenantId: result.tenantId,
 				};
 				storeSession(session);
 				setState({

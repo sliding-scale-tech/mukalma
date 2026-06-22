@@ -11,7 +11,7 @@ import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { useQuery } from "convex/react";
 import { Clock, Inbox, MessageCircle } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Outlet, useMatch, useNavigate } from "react-router";
 
 type StatusFilter = "all" | "open" | "escalated" | "closed";
 type ChannelFilter = "all" | "web" | "whatsapp";
@@ -35,19 +35,31 @@ const statusColors = {
 } as const;
 
 export default function InboxPage() {
+	const onThread = useMatch("/inbox/:threadId");
 	const navigate = useNavigate();
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
 	const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
 	const [assignFilter, setAssignFilter] = useState<AssignFilter>("all");
 
-	const threads = useQuery(api.threads.listForInbox, {
-		status: statusFilter === "all" ? undefined : statusFilter,
-		channel: channelFilter === "all" ? undefined : channelFilter,
-		assignedToUserId:
-			assignFilter === "all"
-				? undefined
-				: (assignFilter as "me" | "unassigned"),
-	});
+	// All hooks must run unconditionally — skip the query when viewing a thread
+	const threads = useQuery(
+		api.threads.listForInbox,
+		onThread
+			? "skip"
+			: {
+					status: statusFilter === "all" ? undefined : statusFilter,
+					channel: channelFilter === "all" ? undefined : channelFilter,
+					assignedToUserId:
+						assignFilter === "all"
+							? undefined
+							: (assignFilter as "me" | "unassigned"),
+				},
+	);
+
+	// When a thread is selected, render the child route instead of the list
+	if (onThread) {
+		return <Outlet />;
+	}
 
 	return (
 		<div className="space-y-6">
@@ -127,7 +139,7 @@ export default function InboxPage() {
 								<MessageCircle className="h-5 w-5 text-muted-foreground" />
 							</div>
 							<div className="min-w-0 flex-1">
-								<div className="flex items-center gap-2">
+								<div className="flex flex-wrap items-center gap-2">
 									<span className="truncate font-medium text-sm">
 										{thread.customerDisplayName ??
 											thread.customerSessionId ??

@@ -6,6 +6,9 @@ const ONLINE_THRESHOLD_MS = 60_000;
 export const heartbeat = mutation({
 	args: {},
 	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return;
+
 		const { tenant, user } = await withTenant(ctx);
 		const now = Date.now();
 
@@ -29,6 +32,9 @@ export const heartbeat = mutation({
 export const listOnlineAgents = query({
 	args: {},
 	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return [];
+
 		const { tenant } = await withTenant(ctx);
 		const cutoff = Date.now() - ONLINE_THRESHOLD_MS;
 
@@ -57,6 +63,9 @@ export const listOnlineAgents = query({
 export const getOnlineCount = query({
 	args: {},
 	handler: async (ctx) => {
+		const identity = await ctx.auth.getUserIdentity();
+		if (!identity) return 0;
+
 		const { tenant } = await withTenant(ctx);
 		const cutoff = Date.now() - ONLINE_THRESHOLD_MS;
 

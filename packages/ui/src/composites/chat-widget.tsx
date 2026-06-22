@@ -48,14 +48,11 @@ export function ChatWidget({
 }: ChatWidgetProps) {
 	const [input, setInput] = useState("");
 	const [sending, setSending] = useState(false);
-	const scrollRef = useRef<HTMLDivElement>(null);
+	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		const el = scrollRef.current;
-		if (el) {
-			el.scrollTop = el.scrollHeight;
-		}
-	}, []);
+		bottomRef.current?.scrollIntoView();
+	}, [messages, isAiTyping]);
 
 	const handleSend = async () => {
 		const trimmed = input.trim();
@@ -125,7 +122,7 @@ export function ChatWidget({
 			</div>
 
 			{/* Messages */}
-			<ScrollArea className="flex-1 px-4" ref={scrollRef}>
+			<ScrollArea className="flex-1 px-4">
 				<div className="space-y-3 py-4">
 					{messages.length === 0 && (
 						<div className="flex flex-col items-center justify-center py-12 text-center">
@@ -139,6 +136,7 @@ export function ChatWidget({
 						<ChatMessageBubble key={msg._id} message={msg} />
 					))}
 					{isAiTyping && <TypingIndicator />}
+					<div ref={bottomRef} />
 				</div>
 			</ScrollArea>
 

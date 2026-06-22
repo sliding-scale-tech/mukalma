@@ -38,50 +38,61 @@ export function ForgotPasswordForm() {
 
 	const onSendCode = emailForm.handleSubmit(async (values) => {
 		setError(null);
-		const { error: createError } = await signIn.create({
-			identifier: values.email,
-		});
-		if (createError) {
-			setError(createError.message ?? "Failed to start reset flow");
-			return;
+		try {
+			const { error: createError } = await signIn.create({
+				identifier: values.email,
+			});
+			if (createError) {
+				setError(createError.message ?? "Failed to start reset flow");
+				return;
+			}
+			const { error: sendError } =
+				await signIn.resetPasswordEmailCode.sendCode();
+			if (sendError) {
+				setError(sendError.message ?? "Failed to send reset code");
+				return;
+			}
+			setStep("reset");
+		} catch (err) {
+			setError(
+				err instanceof Error ? err.message : "Failed to start reset flow",
+			);
 		}
-		const { error: sendError } = await signIn.resetPasswordEmailCode.sendCode();
-		if (sendError) {
-			setError(sendError.message ?? "Failed to send reset code");
-			return;
-		}
-		setStep("reset");
 	});
 
 	const onReset = resetForm.handleSubmit(async (values) => {
 		setError(null);
-		const { error: verifyError } =
-			await signIn.resetPasswordEmailCode.verifyCode({
-				code: values.code,
-			});
-		if (verifyError) {
-			setError(verifyError.message ?? "Invalid code");
-			return;
-		}
-		const { error: submitError } =
-			await signIn.resetPasswordEmailCode.submitPassword({
-				password: values.password,
-			});
-		if (submitError) {
-			setError(submitError.message ?? "Password reset failed");
-			return;
-		}
-		if (signIn.status === "complete") {
-			await signIn.finalize({
-				navigate: ({ decorateUrl }) => {
-					const url = decorateUrl("/login");
-					if (url.startsWith("http")) {
-						window.location.href = url;
-					} else {
-						navigate(url);
-					}
-				},
-			});
+		try {
+			const { error: verifyError } =
+				await signIn.resetPasswordEmailCode.verifyCode({ code: values.code });
+			if (verifyError) {
+				setError(verifyError.message ?? "Invalid code");
+				return;
+			}
+
+			const { error: submitError } =
+				await signIn.resetPasswordEmailCode.submitPassword({
+					password: values.password,
+				});
+			if (submitError) {
+				setError(submitError.message ?? "Password reset failed");
+				return;
+			}
+
+			if (signIn.status === "complete") {
+				await signIn.finalize({
+					navigate: ({ decorateUrl }) => {
+						const url = decorateUrl("/dashboard");
+						if (url.startsWith("http")) {
+							window.location.href = url;
+						} else {
+							navigate(url);
+						}
+					},
+				});
+			}
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Password reset failed");
 		}
 	});
 
@@ -101,17 +112,32 @@ export function ForgotPasswordForm() {
 						<div className="grid gap-2">
 							<Label htmlFor="email">Email</Label>
 							<Input id="email" type="email" {...emailForm.register("email")} />
+							{emailForm.formState.errors.email && (
+								<p className="text-destructive text-sm">
+									{emailForm.formState.errors.email.message}
+								</p>
+							)}
 						</div>
 						{error && <p className="text-destructive text-sm">{error}</p>}
-						<Button type="submit" disabled={fetchStatus === "fetching"}>
+						<Button
+							type="submit"
+							disabled={
+								emailForm.formState.isSubmitting || fetchStatus === "fetching"
+							}
+						>
 							Send code
 						</Button>
 					</form>
 				) : (
 					<form onSubmit={onReset} className="grid gap-4">
 						<div className="grid gap-2">
-							<Label htmlFor="code">Code</Label>
+							<Label htmlFor="code">Verification code</Label>
 							<Input id="code" {...resetForm.register("code")} />
+							{resetForm.formState.errors.code && (
+								<p className="text-destructive text-sm">
+									{resetForm.formState.errors.code.message}
+								</p>
+							)}
 						</div>
 						<div className="grid gap-2">
 							<Label htmlFor="password">New password</Label>
@@ -120,18 +146,40 @@ export function ForgotPasswordForm() {
 								type="password"
 								{...resetForm.register("password")}
 							/>
+							{resetForm.formState.errors.password && (
+								<p className="text-destructive text-sm">
+									{resetForm.formState.errors.password.message}
+								</p>
+							)}
 						</div>
 						<div className="grid gap-2">
-							<Label htmlFor="confirmPassword">Confirm password</Label>
+							<Label htmlFor="confirmPassword">Confirm new password</Label>
 							<Input
 								id="confirmPassword"
 								type="password"
 								{...resetForm.register("confirmPassword")}
 							/>
+							{resetForm.formState.errors.confirmPassword && (
+								<p className="text-destructive text-sm">
+									{resetForm.formState.errors.confirmPassword.message}
+								</p>
+							)}
 						</div>
 						{error && <p className="text-destructive text-sm">{error}</p>}
-						<Button type="submit" disabled={fetchStatus === "fetching"}>
+						<Button
+							type="submit"
+							disabled={
+								resetForm.formState.isSubmitting || fetchStatus === "fetching"
+							}
+						>
 							Reset password
+						</Button>
+						<Button
+							type="button"
+							variant="ghost"
+							onClick={() => setStep("email")}
+						>
+							Back
 						</Button>
 					</form>
 				)}

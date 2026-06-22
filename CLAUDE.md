@@ -76,13 +76,14 @@ Public customer mutations must validate the `customerSessionToken` HMAC before a
 
 Files in `packages/backend/convex/` split by concern. Internal (scheduled/webhook-only) actions use `"use node"` directive and are named with `Internal` suffix or placed in separate files (e.g., `documentsInternal.ts`, `embeddingsSearch.ts`). HTTP routes in `httpActions.ts` + wired in `http.ts`.
 
-### AI / RAG pipeline
+### AI / RAG pipeline (two-model)
 
-- **Embedding:** Google `text-embedding-004` (768 dims), ~500 token chunks with 50-token overlap
-- **Chat:** Google `gemini-2.5-flash` — sends `[ESCALATE]` sentinel when context insufficient
+- **Embedding:** Google `gemini-embedding-001` (3072 dims — its natural default), ~500 token chunks with 50-token overlap
+- **Chat model (`CHAT_MODEL`):** `gemini-2.5-flash` — handles greetings, small-talk, and general replies. Returns `[NEEDS_DOCS]` when document retrieval is required, `[ESCALATE]` if it cannot handle at all.
+- **RAG model (`RAG_MODEL`):** `gemini-2.5-flash` — triggered only when chat model returns `[NEEDS_DOCS]`. Receives retrieved document chunks and returns a grounded answer or `[ESCALATE]`.
 - **Retrieval:** top-5 chunks above 0.7 cosine similarity from Convex vector index on `documentChunks`
 - **Debounce:** 2s per thread before triggering `ai.generateReply`
-- **System prompt:** Built in `packages/backend/lib/systemPrompt.ts` with tenant name, custom prompt, and RAG context chunks
+- **System prompts:** `buildChatSystemPrompt` and `buildRagSystemPrompt` in `packages/backend/lib/systemPrompt.ts`
 
 ### Escalation logic
 
