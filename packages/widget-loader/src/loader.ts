@@ -68,18 +68,29 @@
 		transition: "opacity 0.22s ease, transform 0.22s ease",
 	});
 
-	// Responsive: shrink on narrow viewports
+	// Responsive sizing: near-fullscreen on mobile, floating popup on desktop
 	function applyContainerSize() {
 		const vw = window.innerWidth;
-		if (vw < 480) {
+		const vh = window.innerHeight;
+		if (vw < 560) {
+			// Mobile: stretch to fill almost the whole screen
 			Object.assign(container.style, {
-				width: `${vw - 32}px`,
-				[side]: "16px",
+				width: `${vw - 16}px`,
+				height: `${vh - 90}px`,
+				maxHeight: `${vh - 90}px`,
+				bottom: "80px",
+				[side]: "8px",
+				borderRadius: "16px",
 			});
 		} else {
+			// Desktop: fixed popup above launcher
 			Object.assign(container.style, {
 				width: "400px",
+				height: "600px",
+				maxHeight: "calc(100dvh - 116px)",
+				bottom: "96px",
 				[side]: "24px",
+				borderRadius: "20px",
 			});
 		}
 	}
