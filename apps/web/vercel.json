@@ -1,0 +1,9 @@
+{
+	"framework": "remix",
+	"buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter web build",
+	"installCommand": "echo 'install handled in buildCommand'",
+	"outputDirectory": "build/client",
+	"env": {
+		"NODE_ENV": "production"
+	}
+}
