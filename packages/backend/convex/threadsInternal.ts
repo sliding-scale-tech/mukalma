@@ -1,4 +1,5 @@
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import { internalMutation, internalQuery } from "./_generated/server";
 
 const ONLINE_THRESHOLD_MS = 60_000;
@@ -43,17 +44,29 @@ export const escalateThread = internalMutation({
 			escalatedAt: now,
 		});
 
-		await ctx.db.insert("messages", {
+		const escalationText = "Connecting you with a support agent. Please wait.";
+		const messageId = await ctx.db.insert("messages", {
 			threadId: args.threadId,
 			tenantId: args.tenantId,
 			senderType: "system",
 			senderUserId: null,
-			content: "Connecting you with a support agent. Please wait.",
+			content: escalationText,
 			deliveryStatus: null,
 			readByAgent: true,
 			metadata: { escalationReason: args.reason },
 			createdAt: now,
 		});
+
+		// Send via WhatsApp if this is a WhatsApp thread
+		const thread = await ctx.db.get(args.threadId);
+		if (thread?.channel === "whatsapp") {
+			await ctx.scheduler.runAfter(0, internal.whatsapp.sendText, {
+				tenantId: args.tenantId,
+				threadId: args.threadId,
+				messageId,
+				text: escalationText,
+			});
+		}
 
 		// Round-robin assignment
 		const onlineCutoff = now - ONLINE_THRESHOLD_MS;

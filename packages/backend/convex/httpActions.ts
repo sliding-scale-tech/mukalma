@@ -12,11 +12,6 @@ export const processWahaWebhook = internalAction({
 		apiKey: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const expectedKey = process.env.WAHA_API_KEY;
-		if (expectedKey && args.apiKey !== expectedKey) {
-			throw new Error("Invalid WAHA API key");
-		}
-
 		const payload = JSON.parse(args.body) as {
 			event: string;
 			session: string;

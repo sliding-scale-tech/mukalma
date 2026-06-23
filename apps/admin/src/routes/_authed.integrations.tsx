@@ -89,15 +89,34 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 
 	const handleStart = async () => {
 		setLoading(true);
+		setStatus("connecting");
 		try {
 			await startSession();
-			const qrResult = await getQR();
-			setQr(qrResult.qr);
-			setStatus(qrResult.status);
+			// Poll until WAHA reaches SCAN_QR_CODE (can take a few seconds)
+			let attempts = 0;
+			while (attempts < 15) {
+				await new Promise((r) => setTimeout(r, 2000));
+				const qrResult = await getQR();
+				if (qrResult.qr) {
+					setQr(qrResult.qr);
+					setStatus("scan_qr");
+					break;
+				}
+				if (qrResult.status === "connected") {
+					setStatus("connected");
+					break;
+				}
+				attempts++;
+			}
+			if (attempts >= 15) {
+				toast.error("Timed out waiting for QR code. Try again.");
+				setStatus("disconnected");
+			}
 		} catch (err) {
 			toast.error(
 				err instanceof Error ? err.message : "Failed to start session",
 			);
+			setStatus("disconnected");
 		} finally {
 			setLoading(false);
 		}
@@ -134,9 +153,14 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{status === "loading" && (
-					<div className="flex items-center justify-center py-8">
+				{(status === "loading" || status === "connecting") && (
+					<div className="flex flex-col items-center justify-center gap-2 py-8">
 						<Loader2 className="h-6 w-6 animate-spin" />
+						{status === "connecting" && (
+							<p className="text-muted-foreground text-sm">
+								Starting session, waiting for QR…
+							</p>
+						)}
 					</div>
 				)}
 
@@ -165,17 +189,19 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 
 				{isAdmin && (
 					<div className="flex gap-2">
-						{status === "disconnected" && (
-							<Button onClick={handleStart} disabled={loading}>
-								{loading ? (
-									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-								) : (
-									<Plug className="mr-2 h-4 w-4" />
-								)}
-								Connect WhatsApp
-							</Button>
-						)}
-						{(status === "connected" || status === "scan_qr") && (
+						{status !== "connected" &&
+							status !== "scan_qr" &&
+							status !== "connecting" && (
+								<Button onClick={handleStart} disabled={loading}>
+									{loading ? (
+										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+									) : (
+										<Plug className="mr-2 h-4 w-4" />
+									)}
+									Connect WhatsApp
+								</Button>
+							)}
+						{status !== "disconnected" && status !== "loading" && (
 							<Button
 								variant="destructive"
 								onClick={handleStop}

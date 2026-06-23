@@ -76,6 +76,8 @@ Public customer mutations must validate the `customerSessionToken` HMAC before a
 
 Files in `packages/backend/convex/` split by concern. Internal (scheduled/webhook-only) actions use `"use node"` directive and are named with `Internal` suffix or placed in separate files (e.g., `documentsInternal.ts`, `embeddingsSearch.ts`). HTTP routes in `httpActions.ts` + wired in `http.ts`.
 
+`packages/backend/lib/` (not under `convex/`) holds pure Node.js utilities imported by `"use node"` actions: `gemini.ts` (AI client), `chunking.ts` (text splitting), `textExtraction.ts` (PDF/DOCX/TXT), `customerSession.ts` (HMAC sign/verify), `systemPrompt.ts` (prompt builders).
+
 ### AI / RAG pipeline (two-model)
 
 - **Embedding:** Google `gemini-embedding-001` (3072 dims — its natural default), ~500 token chunks with 50-token overlap
