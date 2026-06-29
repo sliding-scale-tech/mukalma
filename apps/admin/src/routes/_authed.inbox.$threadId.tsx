@@ -14,21 +14,19 @@ import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { Textarea } from "@mukalma/ui/components/textarea";
 import { ChatMessageBubble } from "@mukalma/ui/composites/chat-message-bubble";
 import { useMutation, useQuery } from "convex/react";
-import {
-	ArrowLeft,
-	CheckCircle2,
-	Loader2,
-	RotateCcw,
-	Send,
-	UserPlus,
-} from "lucide-react";
+import { CheckCircle2, Loader2, RotateCcw, Send, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router";
+import { useParams } from "react-router";
 import { toast } from "sonner";
+
+const statusBadgeStyle = {
+	open: "bg-emerald-500/12 text-emerald-400",
+	escalated: "bg-yellow-500/12 text-yellow-400",
+	closed: "bg-zinc-500/12 text-zinc-400",
+} as const;
 
 export default function InboxThreadPage() {
 	const { threadId } = useParams();
-	const navigate = useNavigate();
 	const thread = useQuery(
 		api.threads.getById,
 		threadId ? { threadId: threadId as Id<"threads"> } : "skip",
@@ -37,7 +35,7 @@ export default function InboxThreadPage() {
 		api.messages.listForThread,
 		threadId ? { threadId: threadId as Id<"threads"> } : "skip",
 	);
-	const agents = useQuery(api.users.list);
+	const agents = useQuery(api.users.list, threadId ? {} : "skip");
 	const markRead = useMutation(api.threads.markRead);
 	const sendAgent = useMutation(api.messages.sendAgent);
 	const assignToMe = useMutation(api.threads.assignToMe);
@@ -94,66 +92,52 @@ export default function InboxThreadPage() {
 	};
 
 	if (thread === undefined || messages === undefined) {
-		return <Skeleton className="h-96 w-full" />;
+		return (
+			<div className="flex flex-1 items-center justify-center">
+				<Skeleton className="h-48 w-full max-w-md" />
+			</div>
+		);
 	}
 
 	if (!thread) {
 		return (
-			<div className="py-16 text-center">
+			<div className="flex flex-1 flex-col items-center justify-center py-16 text-center">
 				<p className="text-muted-foreground">Thread not found.</p>
-				<Button
-					variant="ghost"
-					className="mt-4"
-					onClick={() => navigate("/inbox")}
-				>
-					<ArrowLeft className="mr-2 h-4 w-4" />
-					Back to inbox
-				</Button>
 			</div>
 		);
 	}
 
 	const isClosed = thread.status === "closed";
+	const badgeClass =
+		statusBadgeStyle[thread.status as keyof typeof statusBadgeStyle] ??
+		statusBadgeStyle.closed;
 
 	return (
-		<div className="flex h-[calc(100vh-8rem)] flex-col">
+		<div className="flex h-full flex-col">
 			{/* Header */}
-			<div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
+			<div className="flex shrink-0 items-center justify-between border-b px-5 py-3">
 				<div className="flex items-center gap-3">
-					<Button
-						variant="ghost"
-						size="icon"
-						onClick={() => navigate("/inbox")}
-					>
-						<ArrowLeft className="h-4 w-4" />
-					</Button>
+					<div className="flex size-8 items-center justify-center rounded-full bg-accent font-semibold text-muted-foreground text-xs">
+						{(thread.customerDisplayName ?? "?")[0].toUpperCase()}
+					</div>
 					<div>
-						<div className="flex flex-wrap items-center gap-2">
-							<h2 className="font-semibold text-lg">
-								{thread.customerDisplayName ?? "Customer"}
-							</h2>
-							<Badge
-								variant={
-									thread.status === "open"
-										? "default"
-										: thread.status === "escalated"
-											? "destructive"
-											: "secondary"
-								}
+						<div className="font-semibold text-sm">
+							{thread.customerDisplayName ?? "Customer"}
+						</div>
+						<div className="mt-0.5 flex items-center gap-1.5">
+							<span
+								className={`rounded-full px-2 py-0.5 font-medium text-xs ${badgeClass}`}
 							>
 								{thread.status}
+							</span>
+							<Badge variant="outline" className="text-xs capitalize">
+								{thread.channel}
 							</Badge>
-							<Badge variant="outline">{thread.channel}</Badge>
 						</div>
-						{thread.assignedAgentName && (
-							<p className="text-muted-foreground text-sm">
-								Assigned to {thread.assignedAgentName}
-							</p>
-						)}
 					</div>
 				</div>
 
-				<div className="flex flex-wrap items-center gap-2">
+				<div className="flex items-center gap-2">
 					{!isClosed && (
 						<>
 							<Button
@@ -180,7 +164,7 @@ export default function InboxThreadPage() {
 										)
 									}
 								>
-									<SelectTrigger className="w-[160px]">
+									<SelectTrigger className="h-8 w-[140px] text-xs">
 										<SelectValue placeholder="Reassign..." />
 									</SelectTrigger>
 									<SelectContent>
@@ -226,7 +210,7 @@ export default function InboxThreadPage() {
 			</div>
 
 			{/* Messages */}
-			<ScrollArea className="flex-1 px-2">
+			<ScrollArea className="flex-1 px-5">
 				<div className="space-y-3 py-4">
 					{messages.map((msg) => (
 						<ChatMessageBubble
@@ -240,10 +224,10 @@ export default function InboxThreadPage() {
 						/>
 					))}
 					{thread.isAiTyping && (
-						<div className="flex items-center gap-2 px-3 py-2">
-							<Loader2 className="h-4 w-4 animate-spin" />
+						<div className="flex items-center gap-2 px-2 py-1">
+							<Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
 							<span className="text-muted-foreground text-xs">
-								AI is typing...
+								AI is typing…
 							</span>
 						</div>
 					)}
@@ -251,9 +235,9 @@ export default function InboxThreadPage() {
 				</div>
 			</ScrollArea>
 
-			{/* Reply input — available for open AND escalated threads */}
+			{/* Reply input */}
 			{!isClosed && (
-				<div className="border-t pt-4">
+				<div className="shrink-0 border-t p-3.5">
 					<div className="flex gap-2">
 						<Textarea
 							placeholder={
@@ -265,12 +249,12 @@ export default function InboxThreadPage() {
 							onChange={(e) => setInput(e.target.value)}
 							onKeyDown={handleKeyDown}
 							rows={2}
-							className="max-h-32 min-h-[60px] resize-none"
+							className="max-h-28 min-h-[52px] resize-none text-sm"
 							disabled={sending}
 						/>
 						<Button
 							size="icon"
-							className="h-[60px] w-[60px]"
+							className="h-[52px] w-[52px] shrink-0"
 							onClick={handleSend}
 							disabled={!input.trim() || sending}
 						>

@@ -79,7 +79,8 @@ export const startWhatsAppSession = action({
 			}),
 		});
 
-		if (!response.ok) {
+		// 422 = session already started, that's fine — just proceed
+		if (!response.ok && response.status !== 422) {
 			const body = await response.text();
 			throw new ConvexError({
 				code: "WAHA_ERROR",
