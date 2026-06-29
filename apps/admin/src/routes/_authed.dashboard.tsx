@@ -1,11 +1,5 @@
 import { api } from "@mukalma/backend/convex/_generated/api";
 import { Badge } from "@mukalma/ui/components/badge";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "@mukalma/ui/components/card";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import {
 	Table,
@@ -16,14 +10,6 @@ import {
 	TableRow,
 } from "@mukalma/ui/components/table";
 import { useQuery } from "convex/react";
-import {
-	AlertTriangle,
-	CheckCircle2,
-	Clock,
-	MessageCircle,
-	Plus,
-	Users,
-} from "lucide-react";
 import { useNavigate } from "react-router";
 
 function formatRelative(ts: number): string {
@@ -37,169 +23,194 @@ function formatRelative(ts: number): string {
 	return `${days}d ago`;
 }
 
+const statusStyle = {
+	open: {
+		badge: "bg-emerald-500/12 text-emerald-400 hover:bg-emerald-500/12",
+		label: "Open",
+	},
+	escalated: {
+		badge: "bg-yellow-500/12 text-yellow-400 hover:bg-yellow-500/12",
+		label: "Escalated",
+	},
+	closed: {
+		badge: "bg-zinc-500/12 text-zinc-400 hover:bg-zinc-500/12",
+		label: "Closed",
+	},
+} as const;
+
 export default function DashboardPage() {
 	const current = useQuery(api.tenants.getCurrent);
-	const stats = useQuery(api.dashboard.getStats);
-	const activeThreads = useQuery(api.dashboard.listActiveThreads);
+	// Only fire once getCurrent has returned a real tenant — proves Convex has a valid JWT.
+	const stats = useQuery(api.dashboard.getStats, current?.tenant ? {} : "skip");
+	const activeThreads = useQuery(
+		api.dashboard.listActiveThreads,
+		current?.tenant ? {} : "skip",
+	);
 	const navigate = useNavigate();
+
+	const today = new Date().toLocaleDateString("en-US", {
+		weekday: "long",
+		month: "long",
+		day: "numeric",
+		year: "numeric",
+	});
 
 	if (current === undefined || stats === undefined) {
 		return (
-			<div className="space-y-6">
-				<Skeleton className="h-8 w-48" />
-				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-					{Array.from({ length: 5 }).map((_, i) => (
-						<Skeleton key={`stat-${i}`} className="h-28" />
-					))}
+			<div className="flex-1 overflow-y-auto">
+				<div className="max-w-6xl space-y-6 p-6 md:p-8">
+					<Skeleton className="h-8 w-48" />
+					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						{Array.from({ length: 4 }).map((_, i) => (
+							<Skeleton key={`stat-${i}`} className="h-28" />
+						))}
+					</div>
+					<Skeleton className="h-64 w-full" />
 				</div>
-				<Skeleton className="h-64 w-full" />
 			</div>
 		);
 	}
 
+	const statCards = [
+		{
+			label: "Total Today",
+			value: stats.createdToday,
+			sub: "conversations",
+			valueClass: "text-foreground",
+		},
+		{
+			label: "Open",
+			value: stats.open,
+			sub: "AI handling",
+			valueClass: "text-emerald-400",
+		},
+		{
+			label: "Escalated",
+			value: stats.escalated,
+			sub: "needs human",
+			valueClass: "text-yellow-400",
+		},
+		{
+			label: "Closed",
+			value: stats.closedToday,
+			sub: "resolved today",
+			valueClass: "text-foreground",
+		},
+	];
+
 	return (
-		<div className="space-y-8">
-			<div>
-				<h1 className="font-semibold text-2xl tracking-tight">Dashboard</h1>
-				<p className="text-muted-foreground">
-					Overview for {current?.tenant?.name ?? "your business"}
-				</p>
-			</div>
+		<div className="flex-1 overflow-y-auto">
+			<div className="max-w-6xl space-y-6 p-6 md:p-8">
+				{/* Page header */}
+				<div className="flex items-center justify-between">
+					<div>
+						<h1 className="font-semibold text-2xl tracking-tight">Dashboard</h1>
+						<p className="mt-0.5 text-muted-foreground text-sm">{today}</p>
+					</div>
+					<div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1">
+						<span className="size-1.5 rounded-full bg-emerald-500" />
+						<span className="font-medium text-emerald-500 text-xs">Live</span>
+					</div>
+				</div>
 
-			<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-				<StatCard
-					title="Open"
-					value={stats.open}
-					icon={<MessageCircle className="h-4 w-4 text-blue-500" />}
-				/>
-				<StatCard
-					title="Escalated"
-					value={stats.escalated}
-					icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
-				/>
-				<StatCard
-					title="Closed Today"
-					value={stats.closedToday}
-					icon={<CheckCircle2 className="h-4 w-4 text-green-500" />}
-				/>
-				<StatCard
-					title="Created Today"
-					value={stats.createdToday}
-					icon={<Plus className="h-4 w-4 text-purple-500" />}
-				/>
-				<StatCard
-					title="Agents Online"
-					value={stats.onlineAgents}
-					icon={<Users className="h-4 w-4 text-emerald-500" />}
-				/>
-			</div>
+				{/* Stat cards */}
+				<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+					{statCards.map((card) => (
+						<div key={card.label} className="rounded-xl border bg-card p-5">
+							<p className="font-semibold text-muted-foreground text-xs uppercase tracking-widest">
+								{card.label}
+							</p>
+							<p
+								className={`mt-2 font-bold text-4xl tracking-tight ${card.valueClass}`}
+							>
+								{card.value}
+							</p>
+							<p className="mt-1 text-muted-foreground text-xs">{card.sub}</p>
+						</div>
+					))}
+				</div>
 
-			<div>
-				<h2 className="mb-4 font-semibold text-lg">Active Conversations</h2>
-				{activeThreads === undefined ? (
-					<Skeleton className="h-64 w-full" />
-				) : activeThreads.length === 0 ? (
-					<Card>
-						<CardContent className="flex flex-col items-center justify-center py-12">
-							<MessageCircle className="mb-3 h-10 w-10 text-muted-foreground" />
-							<p className="text-muted-foreground">
+				{/* Active conversations */}
+				<div className="overflow-hidden rounded-xl border bg-card">
+					<div className="flex items-center justify-between border-b px-5 py-3.5">
+						<h2 className="font-semibold text-base">Active Conversations</h2>
+					</div>
+
+					{activeThreads === undefined ? (
+						<div className="p-5">
+							<Skeleton className="h-48 w-full" />
+						</div>
+					) : activeThreads.length === 0 ? (
+						<div className="flex flex-col items-center justify-center py-16 text-center">
+							<p className="text-muted-foreground text-sm">
 								No active conversations right now.
 							</p>
-						</CardContent>
-					</Card>
-				) : (
-					<div className="rounded-md border">
+						</div>
+					) : (
 						<Table>
 							<TableHeader>
-								<TableRow>
+								<TableRow className="border-border/50 border-b">
 									<TableHead>Customer</TableHead>
-									<TableHead>Status</TableHead>
 									<TableHead>Channel</TableHead>
-									<TableHead>Last Message</TableHead>
-									<TableHead>Assigned To</TableHead>
+									<TableHead>Status</TableHead>
+									<TableHead>Assigned</TableHead>
+									<TableHead>Last message</TableHead>
 									<TableHead className="text-right">Unread</TableHead>
 								</TableRow>
 							</TableHeader>
 							<TableBody>
-								{activeThreads.map((thread) => (
-									<TableRow
-										key={thread._id}
-										className="cursor-pointer"
-										onClick={() => navigate(`/inbox/${thread._id}`)}
-									>
-										<TableCell className="font-medium">
-											{thread.customerDisplayName}
-										</TableCell>
-										<TableCell>
-											<Badge
-												variant={
-													thread.status === "escalated"
-														? "destructive"
-														: "default"
-												}
-											>
-												{thread.status}
-											</Badge>
-										</TableCell>
-										<TableCell>
-											<Badge variant="outline">{thread.channel}</Badge>
-										</TableCell>
-										<TableCell>
-											<div className="max-w-[200px]">
-												<p className="truncate text-sm">
-													{thread.lastMessagePreview ?? "—"}
-												</p>
-												<span className="flex items-center gap-1 text-muted-foreground text-xs">
-													<Clock className="h-3 w-3" />
-													{formatRelative(thread.lastMessageAt)}
-												</span>
-											</div>
-										</TableCell>
-										<TableCell>
-											{thread.assignedAgentName ?? (
-												<span className="text-muted-foreground">
-													Unassigned
-												</span>
-											)}
-										</TableCell>
-										<TableCell className="text-right">
-											{thread.agentUnreadCount > 0 ? (
-												<Badge variant="destructive">
-													{thread.agentUnreadCount}
+								{activeThreads.map((thread) => {
+									const style = statusStyle[thread.status];
+									return (
+										<TableRow
+											key={thread._id}
+											className="cursor-pointer border-border/30 hover:bg-accent/60"
+											onClick={() => navigate(`/inbox/${thread._id}`)}
+										>
+											<TableCell className="font-medium">
+												{thread.customerDisplayName ?? "Customer"}
+											</TableCell>
+											<TableCell>
+												<Badge variant="outline" className="text-xs capitalize">
+													{thread.channel}
 												</Badge>
-											) : (
-												"0"
-											)}
-										</TableCell>
-									</TableRow>
-								))}
+											</TableCell>
+											<TableCell>
+												<span
+													className={`inline-flex items-center rounded-full px-2 py-0.5 font-medium text-xs ${style.badge}`}
+												>
+													{style.label}
+												</span>
+											</TableCell>
+											<TableCell className="text-muted-foreground text-sm">
+												{thread.assignedAgentName ?? (
+													<span className="text-muted-foreground/50">
+														Unassigned
+													</span>
+												)}
+											</TableCell>
+											<TableCell className="text-muted-foreground text-xs">
+												{formatRelative(thread.lastMessageAt)}
+											</TableCell>
+											<TableCell className="text-right">
+												{thread.agentUnreadCount > 0 ? (
+													<span className="inline-flex min-w-[20px] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 font-semibold text-primary-foreground text-xs">
+														{thread.agentUnreadCount}
+													</span>
+												) : (
+													<span className="text-muted-foreground/40 text-xs">
+														—
+													</span>
+												)}
+											</TableCell>
+										</TableRow>
+									);
+								})}
 							</TableBody>
 						</Table>
-					</div>
-				)}
+					)}
+				</div>
 			</div>
 		</div>
-	);
-}
-
-function StatCard({
-	title,
-	value,
-	icon,
-}: {
-	title: string;
-	value: number;
-	icon: React.ReactNode;
-}) {
-	return (
-		<Card>
-			<CardHeader className="flex flex-row items-center justify-between pb-2">
-				<CardTitle className="font-medium text-sm">{title}</CardTitle>
-				{icon}
-			</CardHeader>
-			<CardContent>
-				<div className="font-bold text-2xl">{value}</div>
-			</CardContent>
-		</Card>
 	);
 }

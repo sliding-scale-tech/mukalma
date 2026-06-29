@@ -9,46 +9,60 @@ export default function SettingsPage() {
 	const updateSettings = useMutation(api.tenants.updateSettings);
 
 	if (current === undefined) {
-		return <Skeleton className="h-64 w-full max-w-xl" />;
+		return (
+			<div className="flex-1 overflow-y-auto">
+				<div className="max-w-2xl p-6 md:p-8">
+					<Skeleton className="h-64 w-full" />
+				</div>
+			</div>
+		);
 	}
 
 	if (!current?.tenant) {
-		return <p className="text-muted-foreground">Complete onboarding first.</p>;
+		return (
+			<div className="flex-1 overflow-y-auto">
+				<div className="p-6 md:p-8">
+					<p className="text-muted-foreground">Complete onboarding first.</p>
+				</div>
+			</div>
+		);
 	}
 
 	const { tenant } = current;
 
 	return (
-		<div className="space-y-6">
-			<div>
-				<h1 className="font-semibold text-2xl tracking-tight">Settings</h1>
-				<p className="text-muted-foreground">
-					Manage your tenant configuration
-				</p>
+		<div className="flex-1 overflow-y-auto">
+			<div className="max-w-2xl space-y-6 p-6 md:p-8">
+				<div>
+					<h1 className="font-semibold text-2xl tracking-tight">Settings</h1>
+					<p className="text-muted-foreground">
+						Manage your tenant configuration
+					</p>
+				</div>
+				<SettingsForm
+					initial={{
+						name: tenant.name,
+						logoUrl: tenant.settings.logoUrl,
+						aiSystemPrompt: tenant.settings.aiSystemPrompt,
+						escalationKeywords: tenant.settings.escalationKeywords,
+						allowedDomains: tenant.settings.allowedDomains,
+						widgetPosition: tenant.settings.widgetPosition,
+						industry: tenant.settings.industry,
+						timezone: tenant.settings.timezone,
+					}}
+					onSave={async (values) => {
+						try {
+							await updateSettings(values);
+							toast.success("Settings saved");
+						} catch (err) {
+							toast.error(
+								err instanceof Error ? err.message : "Failed to save settings",
+							);
+							throw err;
+						}
+					}}
+				/>
 			</div>
-			<SettingsForm
-				initial={{
-					name: tenant.name,
-					logoUrl: tenant.settings.logoUrl,
-					aiSystemPrompt: tenant.settings.aiSystemPrompt,
-					escalationKeywords: tenant.settings.escalationKeywords,
-					allowedDomains: tenant.settings.allowedDomains,
-					widgetPosition: tenant.settings.widgetPosition,
-					industry: tenant.settings.industry,
-					timezone: tenant.settings.timezone,
-				}}
-				onSave={async (values) => {
-					try {
-						await updateSettings(values);
-						toast.success("Settings saved");
-					} catch (err) {
-						toast.error(
-							err instanceof Error ? err.message : "Failed to save settings",
-						);
-						throw err;
-					}
-				}}
-			/>
 		</div>
 	);
 }

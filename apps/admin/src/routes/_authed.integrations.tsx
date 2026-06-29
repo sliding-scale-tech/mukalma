@@ -25,22 +25,26 @@ export default function IntegrationsPage() {
 	const current = useQuery(api.tenants.getCurrent);
 	const isAdmin = current?.user.role === "org_admin";
 
-	if (current === undefined) {
+	if (current === undefined || current === null) {
 		return <Skeleton className="h-64 w-full" />;
 	}
 
 	return (
-		<div className="space-y-8">
-			<div>
-				<h1 className="font-semibold text-2xl tracking-tight">Integrations</h1>
-				<p className="text-muted-foreground">
-					Connect channels and configure your widget.
-				</p>
-			</div>
+		<div className="flex-1 overflow-y-auto">
+			<div className="max-w-4xl space-y-8 p-6 md:p-8">
+				<div>
+					<h1 className="font-semibold text-2xl tracking-tight">
+						Integrations
+					</h1>
+					<p className="text-muted-foreground">
+						Connect channels and configure your widget.
+					</p>
+				</div>
 
-			<div className="grid gap-6 lg:grid-cols-2">
-				<WhatsAppCard isAdmin={isAdmin} />
-				{current.tenant && <WidgetSnippetCard slug={current.tenant.slug} />}
+				<div className="grid gap-6 lg:grid-cols-2">
+					<WhatsAppCard isAdmin={isAdmin} />
+					{current.tenant && <WidgetSnippetCard slug={current.tenant.slug} />}
+				</div>
 			</div>
 		</div>
 	);

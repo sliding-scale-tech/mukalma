@@ -1,21 +1,11 @@
 import { api } from "@mukalma/backend/convex/_generated/api";
-import { Badge } from "@mukalma/ui/components/badge";
-import {
-	Select,
-	SelectContent,
-	SelectItem,
-	SelectTrigger,
-	SelectValue,
-} from "@mukalma/ui/components/select";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { useQuery } from "convex/react";
-import { Clock, Inbox, MessageCircle } from "lucide-react";
+import { Inbox, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 
 type StatusFilter = "all" | "open" | "escalated" | "closed";
-type ChannelFilter = "all" | "web" | "whatsapp";
-type AssignFilter = "all" | "me" | "unassigned";
 
 function formatRelative(ts: number): string {
 	const diff = Date.now() - ts;
@@ -28,155 +18,150 @@ function formatRelative(ts: number): string {
 	return `${days}d ago`;
 }
 
-const statusColors = {
-	open: "default",
-	escalated: "destructive",
-	closed: "secondary",
+const statusBorderColor = {
+	open: "border-l-emerald-500",
+	escalated: "border-l-yellow-500",
+	closed: "border-l-zinc-600",
+} as const;
+
+const statusBadgeStyle = {
+	open: "bg-emerald-500/12 text-emerald-400",
+	escalated: "bg-yellow-500/12 text-yellow-400",
+	closed: "bg-zinc-500/12 text-zinc-400",
 } as const;
 
 export default function InboxPage() {
-	const onThread = useMatch("/inbox/:threadId");
+	const match = useMatch("/inbox/:threadId");
+	const selectedId = match?.params.threadId;
 	const navigate = useNavigate();
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-	const [channelFilter, setChannelFilter] = useState<ChannelFilter>("all");
-	const [assignFilter, setAssignFilter] = useState<AssignFilter>("all");
+	const current = useQuery(api.tenants.getCurrent);
 
-	// All hooks must run unconditionally — skip the query when viewing a thread
 	const threads = useQuery(
 		api.threads.listForInbox,
-		onThread
-			? "skip"
-			: {
-					status: statusFilter === "all" ? undefined : statusFilter,
-					channel: channelFilter === "all" ? undefined : channelFilter,
-					assignedToUserId:
-						assignFilter === "all"
-							? undefined
-							: (assignFilter as "me" | "unassigned"),
-				},
+		current?.tenant
+			? { status: statusFilter === "all" ? undefined : statusFilter }
+			: "skip",
 	);
 
-	// When a thread is selected, render the child route instead of the list
-	if (onThread) {
-		return <Outlet />;
-	}
+	const openCount = threads?.filter(
+		(t) => t.status === "open" || t.status === "escalated",
+	).length;
 
 	return (
-		<div className="space-y-6">
-			<div>
-				<h1 className="font-semibold text-2xl tracking-tight">Inbox</h1>
-				<p className="text-muted-foreground">
-					Support conversations from all channels.
-				</p>
+		<div className="flex flex-1 overflow-hidden">
+			{/* Thread list */}
+			<div className="flex w-80 min-w-80 flex-col border-r bg-sidebar">
+				<div className="border-b p-4">
+					<div className="mb-3 flex items-center justify-between">
+						<h2 className="font-semibold text-base tracking-tight">Inbox</h2>
+						{openCount !== undefined && openCount > 0 && (
+							<span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary text-xs">
+								{openCount} open
+							</span>
+						)}
+					</div>
+					{/* Status filter tabs */}
+					<div className="flex gap-1">
+						{(
+							[
+								{ value: "all", label: "All" },
+								{ value: "open", label: "Open" },
+								{ value: "escalated", label: "Escalated" },
+								{ value: "closed", label: "Closed" },
+							] as const
+						).map((f) => (
+							<button
+								key={f.value}
+								type="button"
+								onClick={() => setStatusFilter(f.value)}
+								className={`rounded-md px-2.5 py-1 font-medium text-xs transition-colors ${
+									statusFilter === f.value
+										? "bg-accent text-foreground"
+										: "text-muted-foreground hover:bg-accent/60"
+								}`}
+							>
+								{f.label}
+							</button>
+						))}
+					</div>
+				</div>
+
+				<div className="flex-1 overflow-y-auto">
+					{threads === undefined ? (
+						<div className="space-y-2 p-3">
+							{Array.from({ length: 5 }).map((_, i) => (
+								<Skeleton key={`skel-${i}`} className="h-16 w-full" />
+							))}
+						</div>
+					) : threads.length === 0 ? (
+						<div className="flex flex-col items-center justify-center py-16 text-center">
+							<Inbox className="mb-2 h-8 w-8 text-muted-foreground/40" />
+							<p className="text-muted-foreground text-sm">No conversations.</p>
+						</div>
+					) : (
+						threads.map((thread) => {
+							const isSelected = thread._id === selectedId;
+							const border =
+								statusBorderColor[
+									thread.status as keyof typeof statusBorderColor
+								] ?? "border-l-zinc-600";
+							return (
+								<button
+									key={thread._id}
+									type="button"
+									onClick={() => navigate(`/inbox/${thread._id}`)}
+									className={`flex w-full gap-3 border-border/30 border-b border-l-2 p-3.5 text-left transition-colors ${border} ${
+										isSelected ? "bg-accent" : "hover:bg-accent/50"
+									}`}
+								>
+									<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent font-semibold text-muted-foreground text-xs">
+										{(thread.customerDisplayName ?? "?")[0].toUpperCase()}
+									</div>
+									<div className="min-w-0 flex-1">
+										<div className="flex items-center justify-between gap-2">
+											<span
+												className={`truncate text-sm ${isSelected || (thread.agentUnreadCount > 0) ? "font-semibold" : "font-medium"}`}
+											>
+												{thread.customerDisplayName ??
+													thread.customerSessionId ??
+													"Customer"}
+											</span>
+											<span className="shrink-0 text-muted-foreground/60 text-xs">
+												{formatRelative(thread.lastMessageAt)}
+											</span>
+										</div>
+										<div className="mt-0.5 flex items-center gap-1.5">
+											<p className="flex-1 truncate text-muted-foreground text-xs">
+												{thread.lastMessagePreview ?? "No messages yet"}
+											</p>
+											{thread.agentUnreadCount > 0 && (
+												<span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 py-0.5 font-bold text-[10px] text-primary-foreground">
+													{thread.agentUnreadCount}
+												</span>
+											)}
+										</div>
+									</div>
+								</button>
+							);
+						})
+					)}
+				</div>
 			</div>
 
-			<div className="flex flex-wrap gap-3">
-				<Select
-					value={statusFilter}
-					onValueChange={(v) => setStatusFilter(v as StatusFilter)}
-				>
-					<SelectTrigger className="w-[140px]">
-						<SelectValue placeholder="Status" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All statuses</SelectItem>
-						<SelectItem value="open">Open</SelectItem>
-						<SelectItem value="escalated">Escalated</SelectItem>
-						<SelectItem value="closed">Closed</SelectItem>
-					</SelectContent>
-				</Select>
-
-				<Select
-					value={channelFilter}
-					onValueChange={(v) => setChannelFilter(v as ChannelFilter)}
-				>
-					<SelectTrigger className="w-[140px]">
-						<SelectValue placeholder="Channel" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All channels</SelectItem>
-						<SelectItem value="web">Web</SelectItem>
-						<SelectItem value="whatsapp">WhatsApp</SelectItem>
-					</SelectContent>
-				</Select>
-
-				<Select
-					value={assignFilter}
-					onValueChange={(v) => setAssignFilter(v as AssignFilter)}
-				>
-					<SelectTrigger className="w-[140px]">
-						<SelectValue placeholder="Assigned" />
-					</SelectTrigger>
-					<SelectContent>
-						<SelectItem value="all">All</SelectItem>
-						<SelectItem value="me">Assigned to me</SelectItem>
-						<SelectItem value="unassigned">Unassigned</SelectItem>
-					</SelectContent>
-				</Select>
+			{/* Thread detail */}
+			<div className="flex flex-1 flex-col overflow-hidden">
+				{selectedId ? (
+					<Outlet />
+				) : (
+					<div className="flex flex-1 flex-col items-center justify-center gap-3">
+						<MessageCircle className="h-10 w-10 text-muted-foreground/30" />
+						<p className="text-muted-foreground text-sm">
+							Select a conversation to view
+						</p>
+					</div>
+				)}
 			</div>
-
-			{threads === undefined ? (
-				<div className="space-y-3">
-					{Array.from({ length: 5 }).map((_, i) => (
-						<Skeleton key={`skel-${i}`} className="h-20 w-full" />
-					))}
-				</div>
-			) : threads.length === 0 ? (
-				<div className="flex flex-col items-center justify-center py-16 text-center">
-					<Inbox className="mb-3 h-10 w-10 text-muted-foreground" />
-					<p className="text-muted-foreground">No conversations found.</p>
-				</div>
-			) : (
-				<div className="space-y-2">
-					{threads.map((thread) => (
-						<button
-							key={thread._id}
-							type="button"
-							onClick={() => navigate(`/inbox/${thread._id}`)}
-							className="flex w-full items-start gap-4 rounded-lg border p-4 text-left transition-colors hover:bg-muted/50"
-						>
-							<div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
-								<MessageCircle className="h-5 w-5 text-muted-foreground" />
-							</div>
-							<div className="min-w-0 flex-1">
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="truncate font-medium text-sm">
-										{thread.customerDisplayName ??
-											thread.customerSessionId ??
-											"Customer"}
-									</span>
-									<Badge
-										variant={statusColors[thread.status]}
-										className="text-xs"
-									>
-										{thread.status}
-									</Badge>
-									<Badge variant="outline" className="text-xs">
-										{thread.channel}
-									</Badge>
-									{thread.agentUnreadCount > 0 && (
-										<Badge variant="destructive" className="text-xs">
-											{thread.agentUnreadCount}
-										</Badge>
-									)}
-								</div>
-								<p className="mt-1 truncate text-muted-foreground text-sm">
-									{thread.lastMessagePreview ?? "No messages yet"}
-								</p>
-								<div className="mt-1 flex items-center gap-3 text-muted-foreground text-xs">
-									<span className="flex items-center gap-1">
-										<Clock className="h-3 w-3" />
-										{formatRelative(thread.lastMessageAt)}
-									</span>
-									{thread.assignedAgentName && (
-										<span>Assigned to {thread.assignedAgentName}</span>
-									)}
-								</div>
-							</div>
-						</button>
-					))}
-				</div>
-			)}
 		</div>
 	);
 }

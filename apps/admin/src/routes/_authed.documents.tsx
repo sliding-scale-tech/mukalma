@@ -8,7 +8,7 @@ import { toast } from "sonner";
 
 export default function DocumentsPage() {
 	const current = useQuery(api.tenants.getCurrent);
-	const documents = useQuery(api.documents.list);
+	const documents = useQuery(api.documents.list, current?.tenant ? {} : "skip");
 	const generateUploadUrl = useMutation(api.documents.generateUploadUrl);
 	const createDocument = useMutation(api.documents.create);
 	const removeDocument = useMutation(api.documents.remove);
@@ -43,57 +43,59 @@ export default function DocumentsPage() {
 	}
 
 	return (
-		<div className="space-y-8">
-			<div>
-				<h1 className="font-semibold text-2xl tracking-tight">Documents</h1>
-				<p className="text-muted-foreground">
-					Upload knowledge base files for AI-powered support answers.
-				</p>
+		<div className="flex-1 overflow-y-auto">
+			<div className="max-w-4xl space-y-8 p-6 md:p-8">
+				<div>
+					<h1 className="font-semibold text-2xl tracking-tight">Documents</h1>
+					<p className="text-muted-foreground">
+						Upload knowledge base files for AI-powered support answers.
+					</p>
+				</div>
+
+				{canManage ? (
+					<DocumentUploadZone onUploadFile={handleUpload} />
+				) : (
+					<p className="text-muted-foreground text-sm">
+						Only organization admins can upload documents.
+					</p>
+				)}
+
+				<DocumentsTable
+					documents={documents.map((doc) => ({
+						_id: doc._id,
+						name: doc.name,
+						mimeType: doc.mimeType,
+						sizeBytes: doc.sizeBytes,
+						status: doc.status,
+						chunkCount: doc.chunkCount,
+						errorMessage: doc.errorMessage,
+						createdAt: doc.createdAt,
+					}))}
+					canManage={canManage}
+					onRetry={async (documentId) => {
+						try {
+							await retryProcessing({
+								documentId: documentId as Id<"documents">,
+							});
+							toast.success("Processing restarted");
+						} catch (err) {
+							toast.error(err instanceof Error ? err.message : "Retry failed");
+							throw err;
+						}
+					}}
+					onDelete={async (documentId) => {
+						try {
+							await removeDocument({
+								documentId: documentId as Id<"documents">,
+							});
+							toast.success("Document deleted");
+						} catch (err) {
+							toast.error(err instanceof Error ? err.message : "Delete failed");
+							throw err;
+						}
+					}}
+				/>
 			</div>
-
-			{canManage ? (
-				<DocumentUploadZone onUploadFile={handleUpload} />
-			) : (
-				<p className="text-muted-foreground text-sm">
-					Only organization admins can upload documents.
-				</p>
-			)}
-
-			<DocumentsTable
-				documents={documents.map((doc) => ({
-					_id: doc._id,
-					name: doc.name,
-					mimeType: doc.mimeType,
-					sizeBytes: doc.sizeBytes,
-					status: doc.status,
-					chunkCount: doc.chunkCount,
-					errorMessage: doc.errorMessage,
-					createdAt: doc.createdAt,
-				}))}
-				canManage={canManage}
-				onRetry={async (documentId) => {
-					try {
-						await retryProcessing({
-							documentId: documentId as Id<"documents">,
-						});
-						toast.success("Processing restarted");
-					} catch (err) {
-						toast.error(err instanceof Error ? err.message : "Retry failed");
-						throw err;
-					}
-				}}
-				onDelete={async (documentId) => {
-					try {
-						await removeDocument({
-							documentId: documentId as Id<"documents">,
-						});
-						toast.success("Document deleted");
-					} catch (err) {
-						toast.error(err instanceof Error ? err.message : "Delete failed");
-						throw err;
-					}
-				}}
-			/>
 		</div>
 	);
 }
