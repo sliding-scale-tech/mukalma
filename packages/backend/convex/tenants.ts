@@ -4,6 +4,37 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUser } from "./lib/auth";
 import { withAdmin } from "./lib/customFunctions";
 
+export const generateLogoUploadUrl = mutation({
+	args: {},
+	handler: async (ctx) => {
+		await withAdmin(ctx);
+		return await ctx.storage.generateUploadUrl();
+	},
+});
+
+export const saveLogoFromStorage = mutation({
+	args: { storageId: v.id("_storage") },
+	handler: async (ctx, args) => {
+		const { tenant } = await withAdmin(ctx);
+		const url = await ctx.storage.getUrl(args.storageId);
+		if (!url) throw new Error("Failed to get storage URL");
+		await ctx.db.patch(tenant._id, {
+			settings: { ...tenant.settings, logoUrl: url },
+		});
+		return url;
+	},
+});
+
+export const removeLogo = mutation({
+	args: {},
+	handler: async (ctx) => {
+		const { tenant } = await withAdmin(ctx);
+		const settings = { ...tenant.settings };
+		delete settings.logoUrl;
+		await ctx.db.patch(tenant._id, { settings });
+	},
+});
+
 export const updateWidgetTheme = mutation({
 	args: {
 		primaryColor: v.optional(v.string()),

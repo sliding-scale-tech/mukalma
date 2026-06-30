@@ -232,7 +232,7 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 function WidgetSnippetCard({ slug }: { slug: string }) {
 	const widgetCdnUrl =
 		(import.meta.env.VITE_WIDGET_CDN_URL as string | undefined) ||
-		(typeof window !== "undefined"
+		(typeof window !== "undefined" && window.location.hostname === "localhost"
 			? window.location.origin.replace(":5173", ":5174")
 			: "https://mukalma-web.vercel.app");
 
