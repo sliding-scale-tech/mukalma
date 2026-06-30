@@ -54,6 +54,8 @@ export function AcceptInviteForm() {
 	const [mode, setMode] = useState<"signup" | "signin">("signup");
 	const [googleLoading, setGoogleLoading] = useState(false);
 	const [signinLoading, setSigninLoading] = useState(false);
+	const [signinEmail, setSigninEmail] = useState("");
+	const [signinPassword, setSigninPassword] = useState("");
 
 	const form = useForm<SignupInput>({
 		resolver: zodResolver(signupSchema),
@@ -104,24 +106,32 @@ export function AcceptInviteForm() {
 		}
 	});
 
-	// Existing account: accept the invite with a ticket sign-in. This must NOT
-	// go through the signup-schema-validated form submit, otherwise the empty
-	// email/password fields fail validation and nothing happens.
+	// Existing account: sign in with email + password. Clerk auto-accepts the
+	// pending organization invitation for the matching email on sign-in, so the
+	// user joins the team. If the password sign-in needs the invitation ticket
+	// explicitly, fall back to a ticket sign-in.
 	const handleExistingAccount = async () => {
 		if (!ticket) return;
+		if (!signinEmail.trim() || !signinPassword) {
+			setError("Enter your email and password.");
+			return;
+		}
 		setError(null);
 		setSigninLoading(true);
 		try {
-			const { error: ticketError } = await signIn.ticket({ ticket });
-			if (ticketError) {
-				setError(ticketError.message ?? "Invite acceptance failed");
+			const { error: passwordError } = await signIn.password({
+				emailAddress: signinEmail.trim(),
+				password: signinPassword,
+			});
+			if (passwordError) {
+				setError(passwordError.message ?? "Sign in failed");
 				return;
 			}
 			if (signIn.status === "complete") {
 				await finalizeSession(signIn);
 			}
 		} catch (err) {
-			setError(err instanceof Error ? err.message : "Invite acceptance failed");
+			setError(err instanceof Error ? err.message : "Sign in failed");
 		} finally {
 			setSigninLoading(false);
 		}
@@ -261,9 +271,35 @@ export function AcceptInviteForm() {
 					) : (
 						<div className="grid gap-4">
 							<p className="text-muted-foreground text-sm">
-								Already have a Mukalma account with this email? Sign in to
-								accept the invitation and join the team.
+								Already have a Mukalma account? Sign in to accept the invitation
+								and join the team.
 							</p>
+							<div className="grid gap-2">
+								<Label htmlFor="signin-email">Email</Label>
+								<Input
+									id="signin-email"
+									type="email"
+									autoComplete="email"
+									value={signinEmail}
+									onChange={(e) => setSigninEmail(e.target.value)}
+								/>
+							</div>
+							<div className="grid gap-2">
+								<Label htmlFor="signin-password">Password</Label>
+								<Input
+									id="signin-password"
+									type="password"
+									autoComplete="current-password"
+									value={signinPassword}
+									onChange={(e) => setSigninPassword(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Enter") {
+											e.preventDefault();
+											handleExistingAccount();
+										}
+									}}
+								/>
+							</div>
 							{error && <p className="text-destructive text-sm">{error}</p>}
 							<Button
 								type="button"
