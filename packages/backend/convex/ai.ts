@@ -157,10 +157,11 @@ export const generateReply = internalAction({
 					r.score >= RAG_SIMILARITY_THRESHOLD,
 			);
 
-			// If no chunks pass the threshold, fall back to the top 3 results
-			// and let the RAG model decide whether it can answer or must escalate.
+			// Always give the model enough context. Prefer chunks above the
+			// threshold, but never send fewer than the top 5 retrieved results so
+			// the RAG model has real material to ground its answer in.
 			const chunksToUse =
-				relevantChunks.length > 0 ? relevantChunks : ragResults.slice(0, 3);
+				relevantChunks.length >= 5 ? relevantChunks : ragResults.slice(0, 5);
 
 			const ragSystemPrompt = buildRagSystemPrompt({
 				tenantName: tenant.name,

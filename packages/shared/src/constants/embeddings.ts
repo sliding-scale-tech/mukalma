@@ -8,7 +8,7 @@ export const RAG_MODEL = "gemini-2.5-flash";
 // Fallback used when the primary model returns 503/429 (overloaded).
 export const FALLBACK_MODEL = "gemini-1.5-flash";
 
-export const CHUNK_TOKEN_SIZE = 500;
-export const CHUNK_TOKEN_OVERLAP = 50;
-export const RAG_TOP_K = 5;
-export const RAG_SIMILARITY_THRESHOLD = 0.5;
+export const CHUNK_TOKEN_SIZE = 280;
+export const CHUNK_TOKEN_OVERLAP = 60;
+export const RAG_TOP_K = 8;
+export const RAG_SIMILARITY_THRESHOLD = 0.45;

@@ -1,5 +1,6 @@
 "use node";
 
+import { RAG_TOP_K } from "@mukalma/shared/constants/embeddings";
 import { v } from "convex/values";
 import { createQueryEmbedding } from "../lib/gemini";
 import { internal } from "./_generated/api";
@@ -24,7 +25,7 @@ export const searchSimilar = internalAction({
 		const vector = await createQueryEmbedding(args.query);
 		const results = await ctx.vectorSearch("documentChunks", "by_embedding", {
 			vector,
-			limit: args.limit ?? 5,
+			limit: args.limit ?? RAG_TOP_K,
 			filter: (q) => q.eq("tenantId", args.tenantId),
 		});
 

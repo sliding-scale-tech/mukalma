@@ -289,11 +289,13 @@ export function ChatWidget({
 					</div>
 					<span
 						className="absolute right-0 bottom-0 h-3 w-3 rounded-full ring-2"
-						style={{
-							background:
-								threadStatus === "closed" ? "var(--wmuted)" : "#10b981",
-							ringColor: "var(--wsurf)",
-						}}
+						style={
+							{
+								background:
+									threadStatus === "closed" ? "var(--wmuted)" : "#10b981",
+								"--tw-ring-color": "var(--wsurf)",
+							} as React.CSSProperties
+						}
 					/>
 				</div>
 
