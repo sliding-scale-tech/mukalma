@@ -45,6 +45,7 @@ export default function StandaloneChatPage() {
 		<ChatPage
 			tenantName={tenant.name}
 			tenantLogo={tenant.logoUrl}
+			tenantTheme={tenant.widgetTheme ?? undefined}
 			tenantId={session.tenantId}
 			sessionId={session.sessionId}
 		/>
@@ -54,11 +55,16 @@ export default function StandaloneChatPage() {
 function ChatPage({
 	tenantName,
 	tenantLogo,
+	tenantTheme,
 	tenantId,
 	sessionId,
 }: {
 	tenantName: string;
 	tenantLogo: string | null;
+	tenantTheme?: {
+		primaryColor?: string;
+		mode?: "light" | "dark" | "auto";
+	} | null;
 	tenantId: Id<"tenants">;
 	sessionId: string;
 }) {
@@ -137,6 +143,7 @@ function ChatPage({
 	return (
 		<ChatWidget
 			tenant={{ name: tenantName, logoUrl: tenantLogo }}
+			theme={tenantTheme ?? undefined}
 			messages={messages}
 			threadStatus={currentStatus}
 			aiEnabled={currentAiEnabled}

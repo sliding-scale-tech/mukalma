@@ -8,11 +8,14 @@
 		return;
 	}
 
-	const position = script.getAttribute("data-position") || "bottom-right";
 	const cdnUrl =
 		script.getAttribute("data-cdn-url") || `https://${slug}.mukalma.co`;
-	const isRight = position !== "bottom-left";
-	const side = isRight ? "right" : "left";
+	const initialPosition =
+		script.getAttribute("data-position") || "bottom-right";
+
+	let side: "left" | "right" =
+		initialPosition === "bottom-left" ? "left" : "right";
+	let primaryColor = "#7c3aed";
 
 	const ICON_CHAT = `<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg>`;
 	const ICON_CLOSE = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
@@ -29,24 +32,24 @@
 		height: "60px",
 		borderRadius: "50%",
 		border: "none",
-		background: "linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%)",
+		background: primaryColor,
 		color: "#fff",
 		cursor: "pointer",
 		display: "flex",
 		alignItems: "center",
 		justifyContent: "center",
-		boxShadow: "0 4px 20px rgba(109,40,217,0.45)",
+		boxShadow: `0 4px 20px ${primaryColor}73`,
 		zIndex: "99999",
 		transition: "transform 0.2s ease, box-shadow 0.2s ease",
 	});
 
 	btn.addEventListener("mouseenter", () => {
 		btn.style.transform = "scale(1.08)";
-		btn.style.boxShadow = "0 6px 28px rgba(109,40,217,0.6)";
+		btn.style.boxShadow = `0 6px 28px ${primaryColor}99`;
 	});
 	btn.addEventListener("mouseleave", () => {
 		btn.style.transform = "scale(1)";
-		btn.style.boxShadow = "0 4px 20px rgba(109,40,217,0.45)";
+		btn.style.boxShadow = `0 4px 20px ${primaryColor}73`;
 	});
 
 	// Chat panel container
@@ -68,12 +71,10 @@
 		transition: "opacity 0.22s ease, transform 0.22s ease",
 	});
 
-	// Responsive sizing: near-fullscreen on mobile, floating popup on desktop
 	function applyContainerSize() {
 		const vw = window.innerWidth;
 		const vh = window.innerHeight;
 		if (vw < 560) {
-			// Mobile: stretch to fill almost the whole screen
 			Object.assign(container.style, {
 				width: `${vw - 16}px`,
 				height: `${vh - 90}px`,
@@ -83,7 +84,6 @@
 				borderRadius: "16px",
 			});
 		} else {
-			// Desktop: fixed popup above launcher
 			Object.assign(container.style, {
 				width: "400px",
 				height: "600px",
@@ -123,7 +123,6 @@
 		btn.innerHTML = ICON_CLOSE;
 		btn.setAttribute("aria-label", "Close chat");
 		container.style.display = "block";
-		// Trigger transition on next frame
 		requestAnimationFrame(() => {
 			requestAnimationFrame(() => {
 				container.style.opacity = "1";
@@ -144,11 +143,37 @@
 		}, 220);
 	}
 
+	function applyColor(color: string) {
+		primaryColor = color;
+		btn.style.background = color;
+		btn.style.boxShadow = `0 4px 20px ${color}73`;
+	}
+
+	function applyPosition(newSide: "left" | "right") {
+		const opp: "left" | "right" = newSide === "left" ? "right" : "left";
+		btn.style[newSide] = "24px";
+		btn.style[opp] = "";
+		container.style[newSide] = "24px";
+		container.style[opp] = "";
+		side = newSide;
+		applyContainerSize();
+	}
+
 	btn.addEventListener("click", () => {
 		isOpen ? close() : open();
 	});
 
 	window.addEventListener("message", (event) => {
-		if (event.data?.type === "mukalma:close") close();
+		const data = event.data;
+		if (!data) return;
+		if (data.type === "mukalma:close") close();
+		if (data.type === "mukalma:config") {
+			if (data.primaryColor) applyColor(data.primaryColor);
+			if (data.position) {
+				const newSide: "left" | "right" =
+					data.position === "bottom-left" ? "left" : "right";
+				if (newSide !== side) applyPosition(newSide);
+			}
+		}
 	});
 })();
