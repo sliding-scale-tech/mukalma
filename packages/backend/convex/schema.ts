@@ -9,6 +9,14 @@ const tenantSettings = v.object({
 	escalationKeywords: v.array(v.string()),
 	allowedDomains: v.array(v.string()),
 	widgetPosition: v.union(v.literal("bottom-right"), v.literal("bottom-left")),
+	widgetTheme: v.optional(
+		v.object({
+			primaryColor: v.optional(v.string()),
+			mode: v.optional(
+				v.union(v.literal("light"), v.literal("dark"), v.literal("auto")),
+			),
+		}),
+	),
 });
 
 export default defineSchema({

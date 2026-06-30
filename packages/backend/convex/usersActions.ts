@@ -53,6 +53,7 @@ export const inviteAgent = action({
 				body: JSON.stringify({
 					email_address: args.email,
 					role: "org:member",
+					redirect_url: `${process.env.ADMIN_APP_URL ?? "http://localhost:5173"}/accept-invite`,
 				}),
 			},
 		);

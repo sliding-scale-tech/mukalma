@@ -2,7 +2,6 @@ import { api } from "@mukalma/backend/convex/_generated/api";
 import type { Id } from "@mukalma/backend/convex/_generated/dataModel";
 import { Badge } from "@mukalma/ui/components/badge";
 import { Button } from "@mukalma/ui/components/button";
-import { ScrollArea } from "@mukalma/ui/components/scroll-area";
 import {
 	Select,
 	SelectContent,
@@ -210,7 +209,7 @@ export default function InboxThreadPage() {
 			</div>
 
 			{/* Messages */}
-			<ScrollArea className="flex-1 px-5">
+			<div className="min-h-0 flex-1 overflow-y-auto px-5">
 				<div className="space-y-3 py-4">
 					{messages.map((msg) => (
 						<ChatMessageBubble
@@ -233,7 +232,7 @@ export default function InboxThreadPage() {
 					)}
 					<div ref={bottomRef} />
 				</div>
-			</ScrollArea>
+			</div>
 
 			{/* Reply input */}
 			{!isClosed && (
