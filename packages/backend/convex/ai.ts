@@ -148,20 +148,15 @@ export const generateReply = internalAction({
 					r.score >= RAG_SIMILARITY_THRESHOLD,
 			);
 
-			// Zero relevant chunks with no fallback → escalate immediately.
-			if (relevantChunks.length === 0) {
-				await ctx.runMutation(internal.threadsInternal.escalateThread, {
-					threadId: args.threadId,
-					tenantId: args.tenantId,
-					reason: "No relevant documents found",
-				});
-				return;
-			}
+			// If no chunks pass the threshold, fall back to the top 3 results
+			// and let the RAG model decide whether it can answer or must escalate.
+			const chunksToUse =
+				relevantChunks.length > 0 ? relevantChunks : ragResults.slice(0, 3);
 
 			const ragSystemPrompt = buildRagSystemPrompt({
 				tenantName: tenant.name,
 				customPrompt: tenant.settings.aiSystemPrompt,
-				contextChunks: relevantChunks.map(
+				contextChunks: chunksToUse.map(
 					(c: { score: number; text: string }) => c.text,
 				),
 			});

@@ -11,4 +11,4 @@ export const FALLBACK_MODEL = "gemini-1.5-flash";
 export const CHUNK_TOKEN_SIZE = 500;
 export const CHUNK_TOKEN_OVERLAP = 50;
 export const RAG_TOP_K = 5;
-export const RAG_SIMILARITY_THRESHOLD = 0.7;
+export const RAG_SIMILARITY_THRESHOLD = 0.5;
