@@ -20,6 +20,18 @@ export default function EmbedChatPage() {
 		document.body.style.margin = "0";
 	}, []);
 
+	useEffect(() => {
+		if (!tenant) return;
+		window.parent.postMessage(
+			{
+				type: "mukalma:config",
+				primaryColor: tenant.widgetTheme?.primaryColor ?? "#7c3aed",
+				position: tenant.widgetPosition,
+			},
+			"*",
+		);
+	}, [tenant]);
+
 	if (!slug || tenant === null) {
 		return null;
 	}
@@ -36,6 +48,7 @@ export default function EmbedChatPage() {
 		<EmbedChat
 			tenantName={tenant.name}
 			tenantLogo={tenant.logoUrl}
+			tenantTheme={tenant.widgetTheme ?? undefined}
 			tenantId={session.tenantId}
 			sessionId={session.sessionId}
 		/>
@@ -45,11 +58,16 @@ export default function EmbedChatPage() {
 function EmbedChat({
 	tenantName,
 	tenantLogo,
+	tenantTheme,
 	tenantId,
 	sessionId,
 }: {
 	tenantName: string;
 	tenantLogo: string | null;
+	tenantTheme?: {
+		primaryColor?: string;
+		mode?: "light" | "dark" | "auto";
+	} | null;
 	tenantId: Id<"tenants">;
 	sessionId: string;
 }) {
@@ -129,6 +147,7 @@ function EmbedChat({
 		<div className="h-dvh">
 			<ChatWidget
 				tenant={{ name: tenantName, logoUrl: tenantLogo }}
+				theme={tenantTheme ?? undefined}
 				messages={messages}
 				threadStatus={currentStatus}
 				aiEnabled={currentAiEnabled}
