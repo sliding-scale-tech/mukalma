@@ -4,6 +4,27 @@ import { mutation, query } from "./_generated/server";
 import { getCurrentUser } from "./lib/auth";
 import { withAdmin } from "./lib/customFunctions";
 
+export const updateWidgetTheme = mutation({
+	args: {
+		primaryColor: v.optional(v.string()),
+		mode: v.optional(
+			v.union(v.literal("light"), v.literal("dark"), v.literal("auto")),
+		),
+	},
+	handler: async (ctx, args) => {
+		const { tenant } = await withAdmin(ctx);
+		await ctx.db.patch(tenant._id, {
+			settings: {
+				...tenant.settings,
+				widgetTheme: {
+					primaryColor: args.primaryColor,
+					mode: args.mode,
+				},
+			},
+		});
+	},
+});
+
 export const getCurrent = query({
 	args: {},
 	handler: async (ctx) => {
@@ -35,6 +56,7 @@ export const getPublicBySlug = query({
 			slug: tenant.slug,
 			logoUrl: tenant.settings.logoUrl ?? null,
 			widgetPosition: tenant.settings.widgetPosition,
+			widgetTheme: tenant.settings.widgetTheme ?? null,
 		};
 	},
 });

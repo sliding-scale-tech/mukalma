@@ -231,11 +231,20 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 
 function WidgetSnippetCard({ slug }: { slug: string }) {
 	const widgetCdnUrl =
-		typeof window !== "undefined"
+		(import.meta.env.VITE_WIDGET_CDN_URL as string | undefined) ||
+		(typeof window !== "undefined"
 			? window.location.origin.replace(":5173", ":5174")
-			: "https://widget.mukalma.co";
+			: "https://mukalma-web.vercel.app");
 
-	const snippet = `<script src="${widgetCdnUrl}/loader.js" data-slug="${slug}" data-position="bottom-right" defer></script>`;
+	const snippet = [
+		"<script",
+		`  src="${widgetCdnUrl}/loader.js"`,
+		`  data-slug="${slug}"`,
+		`  data-cdn-url="${widgetCdnUrl}"`,
+		`  data-position="bottom-right"`,
+		"  defer",
+		"></script>",
+	].join("\n");
 
 	const handleCopy = () => {
 		navigator.clipboard.writeText(snippet);
@@ -247,12 +256,14 @@ function WidgetSnippetCard({ slug }: { slug: string }) {
 			<CardHeader>
 				<CardTitle>Widget Embed</CardTitle>
 				<CardDescription>
-					Add this snippet to your website to show the chat widget.
+					Paste this snippet into your website's{" "}
+					<code className="rounded bg-muted px-1">&lt;body&gt;</code> to show
+					the chat widget.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
 				<div className="relative">
-					<pre className="overflow-x-auto rounded-md bg-muted p-4 font-mono text-sm">
+					<pre className="overflow-x-auto rounded-md bg-muted p-4 font-mono text-xs leading-relaxed">
 						{snippet}
 					</pre>
 					<Button
@@ -265,9 +276,8 @@ function WidgetSnippetCard({ slug }: { slug: string }) {
 					</Button>
 				</div>
 				<p className="text-muted-foreground text-xs">
-					The standalone chat page is available at{" "}
-					<code className="rounded bg-muted px-1">{slug}.localhost:5174</code>{" "}
-					during development.
+					Widget is served from{" "}
+					<code className="rounded bg-muted px-1">{widgetCdnUrl}</code>
 				</p>
 			</CardContent>
 		</Card>
