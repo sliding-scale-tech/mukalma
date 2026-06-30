@@ -12,11 +12,134 @@ import { Label } from "@mukalma/ui/components/label";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { SettingsForm } from "@mukalma/ui/composites/onboarding-wizard";
 import { useMutation, useQuery } from "convex/react";
-import { Loader2, MessageSquare, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, MessageSquare, Trash2, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type WidgetMode = "light" | "dark" | "auto";
+
+function LogoUploadCard({ currentLogoUrl }: { currentLogoUrl?: string }) {
+	const generateUploadUrl = useMutation(api.tenants.generateLogoUploadUrl);
+	const saveLogo = useMutation(api.tenants.saveLogoFromStorage);
+	const removeLogo = useMutation(api.tenants.removeLogo);
+	const fileInputRef = useRef<HTMLInputElement>(null);
+	const [uploading, setUploading] = useState(false);
+	const [preview, setPreview] = useState<string | undefined>(currentLogoUrl);
+
+	useEffect(() => {
+		setPreview(currentLogoUrl);
+	}, [currentLogoUrl]);
+
+	const handleFile = async (file: File) => {
+		if (!file.type.startsWith("image/")) {
+			toast.error("Please select an image file");
+			return;
+		}
+		if (file.size > 2 * 1024 * 1024) {
+			toast.error("Image must be under 2 MB");
+			return;
+		}
+		setUploading(true);
+		try {
+			const uploadUrl = await generateUploadUrl();
+			const res = await fetch(uploadUrl, {
+				method: "POST",
+				headers: { "Content-Type": file.type },
+				body: file,
+			});
+			if (!res.ok) throw new Error("Upload failed");
+			const { storageId } = await res.json();
+			const url = await saveLogo({ storageId });
+			setPreview(url);
+			toast.success("Logo saved");
+		} catch {
+			toast.error("Failed to upload logo");
+		} finally {
+			setUploading(false);
+			if (fileInputRef.current) fileInputRef.current.value = "";
+		}
+	};
+
+	const handleRemove = async () => {
+		try {
+			await removeLogo();
+			setPreview(undefined);
+			toast.success("Logo removed");
+		} catch {
+			toast.error("Failed to remove logo");
+		}
+	};
+
+	return (
+		<Card>
+			<CardHeader>
+				<CardTitle>Logo</CardTitle>
+				<CardDescription>
+					Upload your business logo. Shown in the chat widget header.
+				</CardDescription>
+			</CardHeader>
+			<CardContent>
+				<div className="flex items-center gap-6">
+					{/* Preview */}
+					<div className="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-muted">
+						{preview ? (
+							<img
+								src={preview}
+								alt="Logo"
+								className="h-full w-full object-contain p-1"
+							/>
+						) : (
+							<span className="font-bold text-2xl text-muted-foreground">
+								M
+							</span>
+						)}
+					</div>
+
+					{/* Actions */}
+					<div className="flex flex-col gap-2">
+						<input
+							ref={fileInputRef}
+							type="file"
+							accept="image/png,image/jpeg,image/webp,image/svg+xml"
+							className="hidden"
+							onChange={(e) => {
+								const file = e.target.files?.[0];
+								if (file) handleFile(file);
+							}}
+						/>
+						<Button
+							variant="outline"
+							size="sm"
+							disabled={uploading}
+							onClick={() => fileInputRef.current?.click()}
+						>
+							{uploading ? (
+								<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+							) : (
+								<Upload className="mr-2 h-4 w-4" />
+							)}
+							{uploading ? "Uploading…" : "Upload image"}
+						</Button>
+						{preview && (
+							<Button
+								variant="ghost"
+								size="sm"
+								className="text-destructive hover:text-destructive"
+								onClick={handleRemove}
+							>
+								<Trash2 className="mr-2 h-4 w-4" />
+								Remove logo
+							</Button>
+						)}
+						<p className="text-muted-foreground text-xs">
+							PNG, JPG, WebP or SVG · Max 2 MB
+						</p>
+					</div>
+				</div>
+			</CardContent>
+		</Card>
+	);
+}
 
 function WidgetPreview({
 	primaryColor,
@@ -252,6 +375,7 @@ export default function SettingsPage() {
 						Manage your tenant configuration
 					</p>
 				</div>
+				<LogoUploadCard currentLogoUrl={tenant.settings.logoUrl} />
 				<SettingsForm
 					initial={{
 						name: tenant.name,
