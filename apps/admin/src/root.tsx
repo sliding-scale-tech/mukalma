@@ -51,7 +51,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
 export default function App() {
 	return (
-		<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+		<ClerkProvider
+			publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
+			signInUrl="/login"
+			signUpUrl="/signup"
+			signInFallbackRedirectUrl="/dashboard"
+			signUpFallbackRedirectUrl="/onboarding"
+		>
 			<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 				<ThemeProvider
 					attribute="class"
