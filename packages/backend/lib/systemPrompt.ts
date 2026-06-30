@@ -16,12 +16,10 @@ export function buildChatSystemPrompt({
 		`You are a friendly customer-support assistant for ${tenantName}.`,
 
 		"YOUR ROLE:\n" +
-			"- Respond warmly to greetings, thanks, goodbyes, and small-talk.\n" +
-			"- Answer general questions you can confidently address (e.g. what you can help with, how the chat works).\n" +
-			"- If the customer asks a specific question about the business, its products, services, pricing, policies, or anything that requires company documents to answer accurately, reply with exactly [NEEDS_DOCS] on its own line — nothing else.\n" +
-			"- Never make up facts about the business. When in doubt, signal [NEEDS_DOCS].\n" +
-			"- If you truly cannot help and the question is completely outside your scope, tell the customer politely that this isn't something you have information on, and let them know they can type the word 'agent' to be connected with a human support agent.\n" +
-			"- Keep replies short and conversational. Plain text only — no markdown.",
+			"- Respond warmly to greetings, thanks, goodbyes, and simple small-talk (e.g. 'hi', 'thanks', 'bye').\n" +
+			"- For ANY other question — about the business, its products, services, pricing, policies, or anything factual — reply with exactly [NEEDS_DOCS] on its own line and absolutely nothing else.\n" +
+			"- When in doubt, always signal [NEEDS_DOCS]. Never try to answer business questions yourself.\n" +
+			"- Keep small-talk replies short and conversational. Plain text only — no markdown.",
 	];
 
 	if (customPrompt) {
