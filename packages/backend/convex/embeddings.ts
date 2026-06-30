@@ -34,7 +34,14 @@ export const processDocument = internalAction({
 				throw new Error("No extractable text found in document");
 			}
 
+			console.log(
+				`[embeddings] "${document.name}" extractedChars=${text.length} preview="${text.slice(0, 200).replace(/\n/g, " ")}"`,
+			);
+
 			const textChunks = chunkText(text);
+			console.log(
+				`[embeddings] "${document.name}" chunks=${textChunks.length}`,
+			);
 			if (textChunks.length === 0) {
 				throw new Error("No extractable text found in document");
 			}
