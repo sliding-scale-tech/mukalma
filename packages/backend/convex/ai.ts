@@ -78,9 +78,14 @@ export const generateReply = internalAction({
 				return;
 			}
 
-			// Build conversation history (most recent 20 messages, no system msgs).
+			// Build conversation history — exclude internal signal tokens.
 			const history: ChatMessage[] = recentMessages
 				.slice(0, -1)
+				.filter(
+					(m: { senderType: string; content: string }) =>
+						!m.content.includes("[NEEDS_DOCS]") &&
+						!m.content.includes("[ESCALATE]"),
+				)
 				.map((m: { senderType: string; content: string }) => ({
 					role:
 						m.senderType === "customer"
@@ -143,25 +148,25 @@ export const generateReply = internalAction({
 				},
 			);
 
+			console.log(
+				`[RAG] query="${lastCustomerMessage.slice(0, 80)}" results=${ragResults.length} scores=${ragResults.map((r: { score: number }) => r.score.toFixed(3)).join(",")}`,
+			);
+
 			const relevantChunks = ragResults.filter(
 				(r: { score: number; text: string }) =>
 					r.score >= RAG_SIMILARITY_THRESHOLD,
 			);
 
-			// Zero relevant chunks with no fallback → escalate immediately.
-			if (relevantChunks.length === 0) {
-				await ctx.runMutation(internal.threadsInternal.escalateThread, {
-					threadId: args.threadId,
-					tenantId: args.tenantId,
-					reason: "No relevant documents found",
-				});
-				return;
-			}
+			// Always give the model enough context. Prefer chunks above the
+			// threshold, but never send fewer than the top 5 retrieved results so
+			// the RAG model has real material to ground its answer in.
+			const chunksToUse =
+				relevantChunks.length >= 5 ? relevantChunks : ragResults.slice(0, 5);
 
 			const ragSystemPrompt = buildRagSystemPrompt({
 				tenantName: tenant.name,
 				customPrompt: tenant.settings.aiSystemPrompt,
-				contextChunks: relevantChunks.map(
+				contextChunks: chunksToUse.map(
 					(c: { score: number; text: string }) => c.text,
 				),
 			});
@@ -181,12 +186,16 @@ export const generateReply = internalAction({
 				return;
 			}
 
+			const safeReply = ragReply.includes("[NEEDS_DOCS]")
+				? "I'm sorry, I don't have specific information about that in my knowledge base. If you'd like to speak with a human agent, just type 'agent' and I'll connect you right away."
+				: ragReply;
+
 			const botMessageId = await ctx.runMutation(
 				internal.messagesInternal.insertBotMessage,
 				{
 					threadId: args.threadId,
 					tenantId: args.tenantId,
-					content: ragReply,
+					content: safeReply,
 					deliveryStatus:
 						thread.channel === "whatsapp" ? ("sent" as const) : undefined,
 				},
@@ -197,7 +206,7 @@ export const generateReply = internalAction({
 					threadId: args.threadId,
 					tenantId: args.tenantId,
 					messageId: botMessageId,
-					text: ragReply,
+					text: safeReply,
 				});
 			}
 		} catch (error) {

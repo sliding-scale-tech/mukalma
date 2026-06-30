@@ -152,10 +152,10 @@ export const retryProcessing = mutation({
 			});
 		}
 
-		if (document.status !== "failed") {
+		if (document.status === "processing") {
 			throw new ConvexError({
 				code: "INVALID_STATUS",
-				message: "Only failed documents can be retried",
+				message: "Document is still processing",
 			});
 		}
 
