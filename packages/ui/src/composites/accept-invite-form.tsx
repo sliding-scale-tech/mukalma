@@ -106,27 +106,37 @@ export function AcceptInviteForm() {
 		}
 	});
 
-	// Existing account: sign in with email + password. Clerk auto-accepts the
-	// pending organization invitation for the matching email on sign-in, so the
-	// user joins the team. If the password sign-in needs the invitation ticket
-	// explicitly, fall back to a ticket sign-in.
+	// Existing account: accept the invite via the ticket. The ticket both
+	// authenticates the existing user AND consumes the organization invitation,
+	// so there is no pending invite left over (which is what was bouncing the
+	// user to Clerk's hosted portal). If the instance additionally requires a
+	// password as a first factor, use the entered password to complete it.
 	const handleExistingAccount = async () => {
 		if (!ticket) return;
-		if (!signinEmail.trim() || !signinPassword) {
-			setError("Enter your email and password.");
-			return;
-		}
 		setError(null);
 		setSigninLoading(true);
 		try {
-			const { error: passwordError } = await signIn.password({
-				emailAddress: signinEmail.trim(),
-				password: signinPassword,
-			});
-			if (passwordError) {
-				setError(passwordError.message ?? "Sign in failed");
+			const { error: ticketError } = await signIn.ticket({ ticket });
+			if (ticketError) {
+				setError(ticketError.message ?? "Sign in failed");
 				return;
 			}
+
+			if (signIn.status === "needs_first_factor") {
+				if (!signinPassword) {
+					setError("Enter your password to continue.");
+					return;
+				}
+				const { error: passwordError } = await signIn.password({
+					emailAddress: signinEmail.trim(),
+					password: signinPassword,
+				});
+				if (passwordError) {
+					setError(passwordError.message ?? "Sign in failed");
+					return;
+				}
+			}
+
 			if (signIn.status === "complete") {
 				await finalizeSession(signIn);
 			}
@@ -271,8 +281,9 @@ export function AcceptInviteForm() {
 					) : (
 						<div className="grid gap-4">
 							<p className="text-muted-foreground text-sm">
-								Already have a Mukalma account? Sign in to accept the invitation
-								and join the team.
+								Already have a Mukalma account? Click “Sign in &amp; join” to
+								accept the invitation. Enter your password below only if you’re
+								prompted for it.
 							</p>
 							<div className="grid gap-2">
 								<Label htmlFor="signin-email">Email</Label>
