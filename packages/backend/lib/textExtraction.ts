@@ -1,5 +1,5 @@
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
+import { extractText, getDocumentProxy } from "unpdf";
 
 const ALLOWED_MIME_TYPES = new Set([
 	"application/pdf",
@@ -27,8 +27,12 @@ export async function extractTextFromBlob(
 	const buffer = Buffer.from(await blob.arrayBuffer());
 
 	if (mimeType === "application/pdf") {
-		const result = await pdfParse(buffer);
-		return result.text.trim();
+		// unpdf (modern pdfjs-dist) instead of pdf-parse: pdf-parse bundles a
+		// 2017 pdf.js whose global state corrupts across warm serverless
+		// invocations, causing bogus "bad XRef entry" failures on reuse.
+		const pdf = await getDocumentProxy(new Uint8Array(buffer));
+		const { text } = await extractText(pdf, { mergePages: true });
+		return text.trim();
 	}
 
 	if (

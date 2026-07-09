@@ -12,6 +12,8 @@ import type * as ai from "../ai.js";
 import type * as auditLogsInternal from "../auditLogsInternal.js";
 import type * as clerk from "../clerk.js";
 import type * as dashboard from "../dashboard.js";
+import type * as debugTemp from "../debugTemp.js";
+import type * as debugTempAction from "../debugTempAction.js";
 import type * as documents from "../documents.js";
 import type * as documentsInternal from "../documentsInternal.js";
 import type * as embeddings from "../embeddings.js";
@@ -54,6 +56,8 @@ declare const fullApi: ApiFromModules<{
   auditLogsInternal: typeof auditLogsInternal;
   clerk: typeof clerk;
   dashboard: typeof dashboard;
+  debugTemp: typeof debugTemp;
+  debugTempAction: typeof debugTempAction;
   documents: typeof documents;
   documentsInternal: typeof documentsInternal;
   embeddings: typeof embeddings;
