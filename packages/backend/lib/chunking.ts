@@ -11,6 +11,39 @@ function tokenLen(text: string): number {
 	return encoding.encode(text).length;
 }
 
+const JOINER = "\n\n";
+const JOINER_TOKENS = tokenLen(JOINER);
+
+/**
+ * Build the overlap carried into the next chunk from the tail of the
+ * previous one. Prefers whole sentences (so chunks don't start mid-word);
+ * falls back to a raw token slice when even one sentence exceeds the budget.
+ */
+function overlapTail(prevChunk: string, maxTokens: number): string {
+	const sentences = prevChunk
+		.split(/(?<=[.!?])\s+|\n+/)
+		.map((s) => s.trim())
+		.filter(Boolean);
+
+	const tail: string[] = [];
+	let total = 0;
+	for (let i = sentences.length - 1; i >= 0; i--) {
+		const cost = tokenLen(sentences[i]) + (tail.length > 0 ? 1 : 0);
+		if (total + cost > maxTokens) break;
+		tail.unshift(sentences[i]);
+		total += cost;
+	}
+	if (tail.length > 0) {
+		return tail.join(" ");
+	}
+
+	// Even the last sentence is bigger than the overlap budget — hard-slice.
+	const tokens = encoding.encode(prevChunk);
+	return encoding
+		.decode(tokens.slice(Math.max(0, tokens.length - maxTokens)))
+		.trim();
+}
+
 /**
  * Split a long block of text by sentence boundaries. Falls back to hard
  * token slicing for any single "sentence" that is still too large.
@@ -77,25 +110,23 @@ export function chunkText(text: string): string[] {
 
 	for (const unit of units) {
 		const unitTokens = tokenLen(unit);
+		// Account for the joiner tokens added between packed units.
+		const joinerCost = current.length > 0 ? JOINER_TOKENS : 0;
 
-		if (currentTokens + unitTokens > CHUNK_TOKEN_SIZE && current.length > 0) {
+		if (
+			currentTokens + joinerCost + unitTokens > CHUNK_TOKEN_SIZE &&
+			current.length > 0
+		) {
 			flush();
-			// Start the next chunk with a tail of the previous one for overlap.
-			const prev = current.join("\n\n");
-			const prevTokens = encoding.encode(prev);
-			const tail = encoding
-				.decode(
-					prevTokens.slice(
-						Math.max(0, prevTokens.length - CHUNK_TOKEN_OVERLAP),
-					),
-				)
-				.trim();
+			// Start the next chunk with a sentence-aligned tail of the previous
+			// one so context carries over without mid-word fragments.
+			const tail = overlapTail(current.join(JOINER), CHUNK_TOKEN_OVERLAP);
 			current = tail ? [tail] : [];
 			currentTokens = tail ? tokenLen(tail) : 0;
 		}
 
 		current.push(unit);
-		currentTokens += unitTokens;
+		currentTokens += unitTokens + (current.length > 1 ? JOINER_TOKENS : 0);
 	}
 	flush();
 

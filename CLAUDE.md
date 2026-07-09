@@ -70,7 +70,7 @@ Use these instead of raw `query`/`mutation`:
 | `withAdmin(ctx)` | Requires `role: org_admin` |
 | `withSuperAdmin(ctx)` | Requires `publicMetadata.role === "super_admin"` |
 
-Public customer mutations must validate the `customerSessionToken` HMAC before any DB access.
+Public customer functions validate the caller via `requireCustomerSession` (server-stored random `sessionId` acts as the bearer credential; tenant match + expiry are checked). The HMAC token is used only by `sessions.refreshPublic` to authorize session renewal — expired tokens cannot be refreshed.
 
 ### Convex backend file layout
 
@@ -80,16 +80,17 @@ Files in `packages/backend/convex/` split by concern. Internal (scheduled/webhoo
 
 ### AI / RAG pipeline (two-model)
 
-- **Embedding:** Google `gemini-embedding-001` (3072 dims — its natural default), ~500 token chunks with 50-token overlap
+- **Embedding:** Google `gemini-embedding-001` (3072 dims — its natural default), ~280 token chunks with 60-token sentence-aligned overlap (`CHUNK_TOKEN_SIZE`/`CHUNK_TOKEN_OVERLAP` in `packages/shared/src/constants/embeddings.ts`)
 - **Chat model (`CHAT_MODEL`):** `gemini-2.5-flash` — handles greetings, small-talk, and general replies. Returns `[NEEDS_DOCS]` when document retrieval is required, `[ESCALATE]` if it cannot handle at all.
 - **RAG model (`RAG_MODEL`):** `gemini-2.5-flash` — triggered only when chat model returns `[NEEDS_DOCS]`. Receives retrieved document chunks and returns a grounded answer or `[ESCALATE]`.
-- **Retrieval:** top-5 chunks above 0.7 cosine similarity from Convex vector index on `documentChunks`
-- **Debounce:** 2s per thread before triggering `ai.generateReply`
+- **Retrieval:** follow-up questions are first condensed into a standalone query (`condenseQuery`), then top-8 (`RAG_TOP_K`) vector search on `documentChunks`. Chunks scoring ≥ `RAG_SIMILARITY_THRESHOLD` (0.45) are used, padded with near-misses ≥ `RAG_FALLBACK_THRESHOLD` (0.35) up to `RAG_MAX_CONTEXT_CHUNKS` (5). If nothing clears the threshold, the bot sends a friendly "not in my knowledge base" reply without calling the RAG model.
+- **Debounce:** 2s per thread before triggering `ai.generateReply`; staleness is re-checked after generation so a reply is dropped if a newer customer message arrived mid-generation
+- **AI errors:** transient provider errors (429/503) produce an apology reply and keep AI enabled; non-transient errors escalate the thread
 - **System prompts:** `buildChatSystemPrompt` and `buildRagSystemPrompt` in `packages/backend/lib/systemPrompt.ts`
 
 ### Escalation logic
 
-Thread status enum (exact, no others): `open` | `escalated` | `closed`. Escalation triggers: LLM returns `[ESCALATE]`, zero chunks above threshold, escalation keyword match, or customer clicks "Talk to a human". On escalate: round-robin assign to next online agent (heartbeat within 60s). Fallback: `assignedToUserId = null` (unassigned queue). Agent presence heartbeat runs every 30s via `presence.heartbeat`.
+Thread status enum (exact, no others): `open` | `escalated` | `closed`. Escalation triggers: LLM returns `[ESCALATE]`, escalation keyword match (whole-word, case-insensitive), or customer clicks "Talk to a human". Zero relevant chunks does NOT escalate — the bot replies that the topic isn't covered and tells the customer how to reach an agent. On escalate: round-robin assign to next online agent (heartbeat within 60s). Fallback: `assignedToUserId = null` (unassigned queue). Agent presence heartbeat runs every 30s via `presence.heartbeat`.
 
 ### Linting
 

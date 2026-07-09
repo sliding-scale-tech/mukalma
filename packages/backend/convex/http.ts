@@ -40,6 +40,13 @@ http.route({
 	handler: httpAction(async (ctx, request) => {
 		const apiKey = request.headers.get("x-api-key");
 
+		// Reject unauthenticated calls — otherwise anyone with the deployment
+		// URL can inject fake WhatsApp messages into tenant inboxes.
+		const expectedKey = process.env.WAHA_API_KEY;
+		if (!expectedKey || apiKey !== expectedKey) {
+			return new Response("Unauthorized", { status: 401 });
+		}
+
 		const body = await request.text();
 
 		try {

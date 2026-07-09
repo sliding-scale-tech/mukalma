@@ -31,7 +31,8 @@ export default defineSchema({
 		createdAt: v.number(),
 	})
 		.index("by_slug", ["slug"])
-		.index("by_clerkOrgId", ["clerkOrgId"]),
+		.index("by_clerkOrgId", ["clerkOrgId"])
+		.index("by_wahaSessionName", ["wahaSessionName"]),
 
 	users: defineTable({
 		clerkId: v.string(),
@@ -116,6 +117,9 @@ export default defineSchema({
 		errorMessage: v.union(v.string(), v.null()),
 		uploadedByUserId: v.id("users"),
 		createdAt: v.number(),
+		// When the current processing attempt started — used to detect
+		// documents orphaned in "processing" by a crashed action.
+		processingStartedAt: v.optional(v.number()),
 	}).index("by_tenant", ["tenantId"]),
 
 	documentChunks: defineTable({

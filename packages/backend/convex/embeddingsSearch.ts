@@ -11,8 +11,8 @@ type SearchResult = {
 	_id: Id<"documentChunks">;
 	score: number;
 	text: string;
-	documentId: Id<"documents"> | undefined;
-	chunkIndex: number | undefined;
+	documentId: Id<"documents">;
+	chunkIndex: number;
 };
 
 export const searchSimilar = internalAction({
@@ -40,15 +40,20 @@ export const searchSimilar = internalAction({
 			chunks.map((chunk) => [chunk._id, chunk]),
 		);
 
-		return results.map((result) => {
+		// Drop chunks that were deleted between the vector search and hydration
+		// (or that somehow have empty text) so they never reach the prompt.
+		return results.flatMap((result) => {
 			const chunk = chunkById.get(result._id);
-			return {
-				_id: result._id,
-				score: result._score,
-				text: chunk?.text ?? "",
-				documentId: chunk?.documentId,
-				chunkIndex: chunk?.chunkIndex,
-			};
+			if (!chunk || !chunk.text.trim()) return [];
+			return [
+				{
+					_id: result._id,
+					score: result._score,
+					text: chunk.text,
+					documentId: chunk.documentId,
+					chunkIndex: chunk.chunkIndex,
+				},
+			];
 		});
 	},
 });

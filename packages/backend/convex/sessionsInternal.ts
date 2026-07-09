@@ -41,8 +41,10 @@ export const refreshSession = internalMutation({
 			.query("customerSessions")
 			.withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
 			.unique();
-		if (session) {
-			await ctx.db.patch(session._id, { expiresAt: args.expiresAt });
+		if (!session) {
+			return { refreshed: false };
 		}
+		await ctx.db.patch(session._id, { expiresAt: args.expiresAt });
+		return { refreshed: true };
 	},
 });

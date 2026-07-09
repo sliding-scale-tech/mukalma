@@ -7,6 +7,20 @@ import { internal } from "./_generated/api";
 import { mutation, query } from "./_generated/server";
 import { withAdmin, withTenant } from "./lib/customFunctions";
 
+// A document stuck in "processing" longer than this is considered orphaned
+// (the processing action crashed or timed out) and may be retried or deleted.
+const PROCESSING_STALE_MS = 10 * 60 * 1000;
+
+function isStuckProcessing(document: {
+	status: string;
+	processingStartedAt?: number | null;
+	createdAt: number;
+}): boolean {
+	if (document.status !== "processing") return false;
+	const startedAt = document.processingStartedAt ?? document.createdAt;
+	return Date.now() - startedAt > PROCESSING_STALE_MS;
+}
+
 function validateDocumentInput(args: {
 	name: string;
 	mimeType: string;
@@ -59,17 +73,33 @@ export const create = mutation({
 			});
 		}
 
+		// Validate against what was actually uploaded, not client claims.
+		if (metadata.size <= 0 || metadata.size > MAX_DOCUMENT_BYTES) {
+			throw new ConvexError({
+				code: "INVALID_SIZE",
+				message: "File must be 10 MB or smaller",
+			});
+		}
+		if (metadata.contentType && !isAllowedMimeType(metadata.contentType)) {
+			throw new ConvexError({
+				code: "INVALID_MIME",
+				message: "Unsupported file type. Use PDF, DOCX, TXT, or Markdown.",
+			});
+		}
+
+		const now = Date.now();
 		const documentId = await ctx.db.insert("documents", {
 			tenantId: tenant._id,
 			storageId: args.storageId,
 			name: args.name.trim(),
-			mimeType: args.mimeType,
-			sizeBytes: args.sizeBytes,
+			mimeType: metadata.contentType ?? args.mimeType,
+			sizeBytes: metadata.size,
 			status: "processing",
 			chunkCount: 0,
 			errorMessage: null,
 			uploadedByUserId: user._id,
-			createdAt: Date.now(),
+			createdAt: now,
+			processingStartedAt: now,
 		});
 
 		await ctx.db.insert("auditLogs", {
@@ -114,16 +144,22 @@ export const remove = mutation({
 			});
 		}
 
-		if (document.status === "processing") {
+		if (document.status === "processing" && !isStuckProcessing(document)) {
 			throw new ConvexError({
 				code: "PROCESSING",
 				message: "Document is still processing",
 			});
 		}
 
-		await ctx.runMutation(internal.documentsInternal.deleteChunksByDocument, {
-			documentId: args.documentId,
-		});
+		// Chunk rows are large (embeddings) — clean them up in scheduled pages
+		// instead of one unbounded transaction.
+		await ctx.scheduler.runAfter(
+			0,
+			internal.documentsInternal.deleteAllChunks,
+			{
+				documentId: args.documentId,
+			},
+		);
 		await ctx.storage.delete(document.storageId);
 		await ctx.db.delete(args.documentId);
 
@@ -152,16 +188,14 @@ export const retryProcessing = mutation({
 			});
 		}
 
-		if (document.status === "processing") {
+		if (document.status === "processing" && !isStuckProcessing(document)) {
 			throw new ConvexError({
 				code: "INVALID_STATUS",
 				message: "Document is still processing",
 			});
 		}
 
-		await ctx.runMutation(internal.documentsInternal.deleteChunksByDocument, {
-			documentId: args.documentId,
-		});
+		// processDocument clears old chunks itself before inserting new ones.
 		await ctx.runMutation(internal.documentsInternal.markProcessing, {
 			documentId: args.documentId,
 		});

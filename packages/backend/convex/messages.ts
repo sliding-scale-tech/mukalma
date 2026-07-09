@@ -4,6 +4,10 @@ import { mutation, query } from "./_generated/server";
 import { withTenant } from "./lib/customFunctions";
 import { requireCustomerSession } from "./lib/sessionAuth";
 
+// Hard cap on messages returned per thread — keeps query payloads bounded
+// for very long conversations (newest messages win).
+const MESSAGE_LIST_LIMIT = 200;
+
 // --- Public (customer widget) ---
 
 export const listPublic = query({
@@ -20,10 +24,13 @@ export const listPublic = query({
 			throw new ConvexError({ code: "NOT_FOUND", message: "Thread not found" });
 		}
 
-		const messages = await ctx.db
-			.query("messages")
-			.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
-			.collect();
+		const messages = (
+			await ctx.db
+				.query("messages")
+				.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
+				.order("desc")
+				.take(MESSAGE_LIST_LIMIT)
+		).reverse();
 
 		return messages.map((m) => ({
 			_id: m._id,
@@ -104,9 +111,10 @@ export const listForThread = query({
 		const messages = await ctx.db
 			.query("messages")
 			.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
-			.collect();
+			.order("desc")
+			.take(MESSAGE_LIST_LIMIT);
 
-		return messages;
+		return messages.reverse();
 	},
 });
 

@@ -9,10 +9,12 @@ export const upsertThreadAndInsertMessage = internalMutation({
 		content: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const tenants = await ctx.db.query("tenants").collect();
-		const tenant = tenants.find(
-			(t) => t.wahaSessionName === args.wahaSessionName,
-		);
+		const tenant = await ctx.db
+			.query("tenants")
+			.withIndex("by_wahaSessionName", (q) =>
+				q.eq("wahaSessionName", args.wahaSessionName),
+			)
+			.first();
 		if (tenant?.status !== "active") {
 			return;
 		}

@@ -35,7 +35,8 @@ async function wahaFetch(
 export const startWhatsAppSession = action({
 	args: {},
 	handler: async (ctx): Promise<{ sessionName: string }> => {
-		if (!getWahaConfig()) {
+		const wahaConfig = getWahaConfig();
+		if (!wahaConfig) {
 			throw new ConvexError({
 				code: "NOT_CONFIGURED",
 				message: "WhatsApp integration is not configured on this server",
@@ -73,6 +74,8 @@ export const startWhatsAppSession = action({
 						{
 							url: `${process.env.CONVEX_SITE_URL}/waha/webhook`,
 							events: ["message"],
+							// Our webhook endpoint rejects calls without this header.
+							customHeaders: [{ name: "X-Api-Key", value: wahaConfig.apiKey }],
 						},
 					],
 				},

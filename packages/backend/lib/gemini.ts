@@ -16,7 +16,7 @@ const BATCH_SIZE = 100;
 const MAX_RETRIES = 3;
 const RETRY_BASE_MS = 1000;
 
-function isRetryable(error: unknown): boolean {
+export function isRetryable(error: unknown): boolean {
 	if (error instanceof Error) {
 		const msg = error.message;
 		return (
@@ -173,6 +173,42 @@ async function callWithFallback(
 			);
 		}
 		throw err;
+	}
+}
+
+/**
+ * Rewrite a follow-up customer message into a standalone search query so
+ * retrieval works for messages like "and how much does that cost?".
+ * Falls back to the original message on any failure.
+ */
+export async function condenseQuery(
+	history: ChatMessage[],
+	userMessage: string,
+): Promise<string> {
+	if (history.length === 0) return userMessage;
+
+	const transcript = history
+		.slice(-6)
+		.map((m) => `${m.role === "user" ? "Customer" : "Assistant"}: ${m.content}`)
+		.join("\n");
+
+	try {
+		const model = getGeminiClient().getGenerativeModel({
+			model: CHAT_MODEL,
+			systemInstruction:
+				"You rewrite the customer's latest message into a single standalone search query for a knowledge base, resolving pronouns and references using the conversation. Return ONLY the rewritten query text — no quotes, no explanations. If the message is already self-contained, return it unchanged.",
+		});
+		const result = await model.generateContent(
+			`Conversation:\n${transcript}\n\nLatest customer message: ${userMessage}\n\nStandalone query:`,
+		);
+		const rewritten = result.response.text().trim();
+		// Guard against degenerate rewrites (empty or absurdly long output).
+		if (!rewritten || rewritten.length > userMessage.length + 300) {
+			return userMessage;
+		}
+		return rewritten;
+	} catch {
+		return userMessage;
 	}
 }
 
