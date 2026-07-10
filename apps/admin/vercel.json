@@ -1,4 +1,5 @@
 {
+	"framework": null,
 	"buildCommand": "cd ../.. && pnpm install --frozen-lockfile && pnpm --filter admin build",
 	"installCommand": "echo skip",
 	"outputDirectory": "build/client",
