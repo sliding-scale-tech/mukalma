@@ -1,6 +1,8 @@
+import { paginationOptsValidator } from "convex/server";
 import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import { mutation, query } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { mutation, type QueryCtx, query } from "./_generated/server";
 import { withAdmin, withTenant } from "./lib/customFunctions";
 import { requireCustomerSession } from "./lib/sessionAuth";
 
@@ -137,8 +139,55 @@ export const requestEscalationPublic = mutation({
 
 // --- Admin (Clerk auth) ---
 
-const INBOX_PAGE_SIZE = 20;
+const MAX_PINNED_UNREAD = 50;
 
+async function enrichThreadForInbox(ctx: QueryCtx, thread: Doc<"threads">) {
+	const lastMessage = await ctx.db
+		.query("messages")
+		.withIndex("by_thread", (q) => q.eq("threadId", thread._id))
+		.order("desc")
+		.first();
+
+	let assignedAgentName: string | null = null;
+	if (thread.assignedToUserId) {
+		const agent = await ctx.db.get(thread.assignedToUserId);
+		assignedAgentName = agent?.name ?? agent?.email ?? null;
+	}
+
+	return {
+		...thread,
+		lastMessagePreview: lastMessage?.content.slice(0, 100) ?? null,
+		lastMessageSenderType: lastMessage?.senderType ?? null,
+		assignedAgentName,
+	};
+}
+
+type InboxFilterArgs = {
+	channel?: "web" | "whatsapp";
+	assignedToUserId?: Id<"users"> | "unassigned" | "me";
+};
+
+function matchesInboxFilters(
+	thread: Doc<"threads">,
+	args: InboxFilterArgs,
+	userId: Id<"users">,
+): boolean {
+	if (args.channel && thread.channel !== args.channel) return false;
+	if (args.assignedToUserId === "unassigned") {
+		return thread.assignedToUserId === null;
+	}
+	if (args.assignedToUserId === "me") {
+		return thread.assignedToUserId === userId;
+	}
+	if (args.assignedToUserId) {
+		return thread.assignedToUserId === args.assignedToUserId;
+	}
+	return true;
+}
+
+// Cursor-paginated inbox list, newest activity first. Unread threads are
+// served separately by listUnreadForInbox and pinned on top by the client —
+// a cursor cannot follow an order that re-sorts whenever a message is read.
 export const listForInbox = query({
 	args: {
 		status: v.optional(
@@ -148,7 +197,63 @@ export const listForInbox = query({
 		assignedToUserId: v.optional(
 			v.union(v.id("users"), v.literal("unassigned"), v.literal("me")),
 		),
-		limit: v.optional(v.number()),
+		paginationOpts: paginationOptsValidator,
+	},
+	handler: async (ctx, args) => {
+		const { tenant, user } = await withTenant(ctx);
+
+		const indexed = args.status
+			? ctx.db
+					.query("threads")
+					.withIndex("by_tenant_status_lastMessage", (q) =>
+						q.eq("tenantId", tenant._id).eq("status", args.status!),
+					)
+			: ctx.db
+					.query("threads")
+					.withIndex("by_tenant_and_lastMessage", (q) =>
+						q.eq("tenantId", tenant._id),
+					);
+
+		const result = await indexed
+			.order("desc")
+			.filter((q) => {
+				const clauses = [];
+				if (args.channel) {
+					clauses.push(q.eq(q.field("channel"), args.channel));
+				}
+				if (args.assignedToUserId === "unassigned") {
+					clauses.push(q.eq(q.field("assignedToUserId"), null));
+				} else if (args.assignedToUserId === "me") {
+					clauses.push(q.eq(q.field("assignedToUserId"), user._id));
+				} else if (args.assignedToUserId) {
+					clauses.push(
+						q.eq(q.field("assignedToUserId"), args.assignedToUserId),
+					);
+				}
+				if (clauses.length === 0) return true;
+				return q.and(...clauses);
+			})
+			.paginate(args.paginationOpts);
+
+		const page = await Promise.all(
+			result.page.map((thread) => enrichThreadForInbox(ctx, thread)),
+		);
+
+		return { ...result, page };
+	},
+});
+
+// Unread threads for the pinned section at the top of the inbox. Bounded and
+// unpaginated — the unread set is small by nature.
+export const listUnreadForInbox = query({
+	args: {
+		status: v.optional(
+			v.union(v.literal("open"), v.literal("escalated"), v.literal("closed")),
+		),
+		channel: v.optional(v.union(v.literal("web"), v.literal("whatsapp"))),
+		assignedToUserId: v.optional(
+			v.union(v.id("users"), v.literal("unassigned"), v.literal("me")),
+		),
 	},
 	handler: async (ctx, args) => {
 		const { tenant, user } = await withTenant(ctx);
@@ -156,7 +261,7 @@ export const listForInbox = query({
 		const threads = args.status
 			? await ctx.db
 					.query("threads")
-					.withIndex("by_tenant_and_status", (q) =>
+					.withIndex("by_tenant_status_lastMessage", (q) =>
 						q.eq("tenantId", tenant._id).eq("status", args.status!),
 					)
 					.collect()
@@ -167,59 +272,16 @@ export const listForInbox = query({
 					)
 					.collect();
 
-		let filtered = [...threads];
+		const unread = threads
+			.filter(
+				(t) => t.agentUnreadCount > 0 && matchesInboxFilters(t, args, user._id),
+			)
+			.sort((a, b) => b.lastMessageAt - a.lastMessageAt)
+			.slice(0, MAX_PINNED_UNREAD);
 
-		if (args.channel) {
-			filtered = filtered.filter((t) => t.channel === args.channel);
-		}
-
-		if (args.assignedToUserId === "unassigned") {
-			filtered = filtered.filter((t) => t.assignedToUserId === null);
-		} else if (args.assignedToUserId === "me") {
-			filtered = filtered.filter((t) => t.assignedToUserId === user._id);
-		} else if (args.assignedToUserId) {
-			filtered = filtered.filter(
-				(t) => t.assignedToUserId === args.assignedToUserId,
-			);
-		}
-
-		// Unread conversations first, newest activity first within each group —
-		// a new customer message bumps both, so it jumps straight to the top.
-		filtered.sort((a, b) => {
-			const aUnread = a.agentUnreadCount > 0 ? 1 : 0;
-			const bUnread = b.agentUnreadCount > 0 ? 1 : 0;
-			if (aUnread !== bUnread) return bUnread - aUnread;
-			return b.lastMessageAt - a.lastMessageAt;
-		});
-
-		const limit = Math.max(args.limit ?? INBOX_PAGE_SIZE, 1);
-		const hasMore = filtered.length > limit;
-		const pageThreads = filtered.slice(0, limit);
-
-		const threadsWithPreview = await Promise.all(
-			pageThreads.map(async (thread) => {
-				const lastMessage = await ctx.db
-					.query("messages")
-					.withIndex("by_thread", (q) => q.eq("threadId", thread._id))
-					.order("desc")
-					.first();
-
-				let assignedAgentName: string | null = null;
-				if (thread.assignedToUserId) {
-					const agent = await ctx.db.get(thread.assignedToUserId);
-					assignedAgentName = agent?.name ?? agent?.email ?? null;
-				}
-
-				return {
-					...thread,
-					lastMessagePreview: lastMessage?.content.slice(0, 100) ?? null,
-					lastMessageSenderType: lastMessage?.senderType ?? null,
-					assignedAgentName,
-				};
-			}),
+		return await Promise.all(
+			unread.map((thread) => enrichThreadForInbox(ctx, thread)),
 		);
-
-		return { threads: threadsWithPreview, hasMore };
 	},
 });
 

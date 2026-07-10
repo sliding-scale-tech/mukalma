@@ -73,6 +73,11 @@ export default defineSchema({
 	})
 		.index("by_tenant_and_status", ["tenantId", "status"])
 		.index("by_tenant_and_lastMessage", ["tenantId", "lastMessageAt"])
+		.index("by_tenant_status_lastMessage", [
+			"tenantId",
+			"status",
+			"lastMessageAt",
+		])
 		.index("by_tenant_and_externalChatId", ["tenantId", "externalChatId"])
 		.index("by_tenant_and_customerSession", ["tenantId", "customerSessionId"])
 		.index("by_assignedTo", ["assignedToUserId"]),

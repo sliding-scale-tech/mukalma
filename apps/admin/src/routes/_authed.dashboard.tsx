@@ -12,7 +12,7 @@ import {
 } from "@mukalma/ui/components/table";
 import { useQuery } from "convex/react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 function formatRelative(ts: number): string {
@@ -45,11 +45,21 @@ export default function DashboardPage() {
 	const current = useQuery(api.tenants.getCurrent);
 	// Only fire once getCurrent has returned a real tenant — proves Convex has a valid JWT.
 	const stats = useQuery(api.dashboard.getStats, current?.tenant ? {} : "skip");
-	const [page, setPage] = useState(0);
-	const activePage = useQuery(
+	// Cursor stack: index = page number, value = cursor that loads that page
+	// (null loads page 1). Prev pops, Next pushes the continue cursor.
+	const [cursors, setCursors] = useState<(string | null)[]>([null]);
+	const cursor = cursors[cursors.length - 1];
+	const livePage = useQuery(
 		api.dashboard.listActiveThreads,
-		current?.tenant ? { page } : "skip",
+		current?.tenant ? { cursor } : "skip",
 	);
+	// Keep showing the previous page while the next one loads so the table
+	// doesn't flash a skeleton (and lose scroll) on every page change.
+	const lastPage = useRef(livePage);
+	if (livePage !== undefined) {
+		lastPage.current = livePage;
+	}
+	const activePage = livePage ?? lastPage.current;
 	const activeThreads = activePage?.threads;
 	const navigate = useNavigate();
 
@@ -216,36 +226,36 @@ export default function DashboardPage() {
 					)}
 
 					{/* Pagination */}
-					{activePage !== undefined && activePage.totalPages > 1 && (
-						<div className="flex items-center justify-between border-t px-5 py-2.5">
-							<span className="text-muted-foreground text-xs">
-								Page {activePage.page + 1} of {activePage.totalPages} ·{" "}
-								{activePage.totalCount} active
-							</span>
-							<div className="flex gap-1.5">
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() => setPage((p) => Math.max(p - 1, 0))}
-									disabled={activePage.page === 0}
-								>
-									<ChevronLeft className="h-3.5 w-3.5" />
-									Previous
-								</Button>
-								<Button
-									variant="outline"
-									size="sm"
-									onClick={() =>
-										setPage((p) => Math.min(p + 1, activePage.totalPages - 1))
-									}
-									disabled={activePage.page >= activePage.totalPages - 1}
-								>
-									Next
-									<ChevronRight className="h-3.5 w-3.5" />
-								</Button>
+					{activePage !== undefined &&
+						(cursors.length > 1 || !activePage.isDone) && (
+							<div className="flex items-center justify-between border-t px-5 py-2.5">
+								<span className="text-muted-foreground text-xs">
+									Page {cursors.length}
+								</span>
+								<div className="flex gap-1.5">
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() => setCursors((c) => c.slice(0, -1))}
+										disabled={cursors.length === 1}
+									>
+										<ChevronLeft className="h-3.5 w-3.5" />
+										Previous
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onClick={() =>
+											setCursors((c) => [...c, activePage.continueCursor])
+										}
+										disabled={activePage.isDone}
+									>
+										Next
+										<ChevronRight className="h-3.5 w-3.5" />
+									</Button>
+								</div>
 							</div>
-						</div>
-					)}
+						)}
 				</div>
 			</div>
 		</div>

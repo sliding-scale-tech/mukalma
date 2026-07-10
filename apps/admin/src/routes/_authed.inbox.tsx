@@ -1,7 +1,7 @@
 import { api } from "@mukalma/backend/convex/_generated/api";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
-import { useQuery } from "convex/react";
-import { Globe, Inbox, MessageCircle } from "lucide-react";
+import { usePaginatedQuery, useQuery } from "convex/react";
+import { Globe, Inbox, Loader2, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 
@@ -37,19 +37,35 @@ export default function InboxPage() {
 	const selectedId = match?.params.threadId;
 	const navigate = useNavigate();
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-	const [limit, setLimit] = useState(INBOX_PAGE_SIZE);
 	const current = useQuery(api.tenants.getCurrent);
+	const filterArgs = statusFilter === "all" ? {} : { status: statusFilter };
 
-	const result = useQuery(
+	// Cursor-paginated read threads (newest activity first). Loading more
+	// appends via a stable Convex cursor — no offset drift, no list remount.
+	const {
+		results: pagedThreads,
+		status: pageStatus,
+		loadMore,
+	} = usePaginatedQuery(
 		api.threads.listForInbox,
-		current?.tenant
-			? {
-					status: statusFilter === "all" ? undefined : statusFilter,
-					limit,
-				}
-			: "skip",
+		current?.tenant ? filterArgs : "skip",
+		{ initialNumItems: INBOX_PAGE_SIZE },
 	);
-	const threads = result?.threads;
+
+	// Unread threads are pinned on top, outside the cursor's ordering.
+	const unread = useQuery(
+		api.threads.listUnreadForInbox,
+		current?.tenant ? filterArgs : "skip",
+	);
+
+	const unreadIds = new Set((unread ?? []).map((t) => t._id));
+	const threads =
+		unread === undefined && pageStatus === "LoadingFirstPage"
+			? undefined
+			: [
+					...(unread ?? []),
+					...pagedThreads.filter((t) => !unreadIds.has(t._id)),
+				];
 
 	const stats = useQuery(api.dashboard.getStats, current?.tenant ? {} : "skip");
 	const openCount =
@@ -57,7 +73,6 @@ export default function InboxPage() {
 
 	const handleFilterChange = (filter: StatusFilter) => {
 		setStatusFilter(filter);
-		setLimit(INBOX_PAGE_SIZE);
 	};
 
 	return (
@@ -164,14 +179,19 @@ export default function InboxPage() {
 									</button>
 								);
 							})}
-							{result?.hasMore && (
+							{pageStatus === "CanLoadMore" && (
 								<button
 									type="button"
-									onClick={() => setLimit((l) => l + INBOX_PAGE_SIZE)}
+									onClick={() => loadMore(INBOX_PAGE_SIZE)}
 									className="w-full py-3 text-center font-medium text-muted-foreground text-xs transition-colors hover:bg-accent/50 hover:text-foreground"
 								>
 									Load more conversations
 								</button>
+							)}
+							{pageStatus === "LoadingMore" && (
+								<div className="flex items-center justify-center py-3">
+									<Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+								</div>
 							)}
 						</>
 					)}
