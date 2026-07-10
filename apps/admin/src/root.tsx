@@ -15,6 +15,7 @@ import {
 
 import type { Route } from "./+types/root";
 import { ThemeProvider } from "./components/theme-provider";
+import { adminPath } from "./lib/adminUrl";
 
 const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
 
@@ -55,8 +56,10 @@ export default function App() {
 			publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}
 			signInUrl="/login"
 			signUpUrl="/signup"
-			signInFallbackRedirectUrl="/dashboard"
-			signUpFallbackRedirectUrl="/onboarding"
+			// Force (not fallback) redirect: always lands on the real
+			// deployment regardless of any redirect_url Clerk received.
+			signInForceRedirectUrl={adminPath("/dashboard")}
+			signUpForceRedirectUrl={adminPath("/onboarding")}
 		>
 			<ConvexProviderWithClerk client={convex} useAuth={useAuth}>
 				<ThemeProvider

@@ -2,6 +2,7 @@ import { useAuth, useClerk } from "@clerk/react-router";
 import { Loader2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
+import { adminPath } from "../lib/adminUrl";
 
 export default function SsoCallbackPage() {
 	const { handleRedirectCallback } = useClerk();
@@ -16,8 +17,8 @@ export default function SsoCallbackPage() {
 		called.current = true;
 
 		handleRedirectCallback({
-			signInForceRedirectUrl: "/dashboard",
-			signUpForceRedirectUrl: "/onboarding",
+			signInForceRedirectUrl: adminPath("/dashboard"),
+			signUpForceRedirectUrl: adminPath("/onboarding"),
 		}).catch((err: unknown) => {
 			setError(err instanceof Error ? err.message : "Authentication failed");
 		});

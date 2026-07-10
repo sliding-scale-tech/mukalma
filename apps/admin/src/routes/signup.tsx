@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react-router";
 import { SignupForm } from "@mukalma/ui/composites/signup-form";
 import { Navigate, useSearchParams } from "react-router";
+import { adminPath } from "../lib/adminUrl";
 
 export default function SignupPage() {
 	const { isLoaded, isSignedIn } = useAuth();
@@ -24,7 +25,7 @@ export default function SignupPage() {
 				</div>
 				<span className="font-semibold text-lg tracking-tight">Mukalma</span>
 			</div>
-			<SignupForm />
+			<SignupForm redirectTo={adminPath("/onboarding")} />
 		</div>
 	);
 }

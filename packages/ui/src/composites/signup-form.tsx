@@ -15,7 +15,11 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { Link, useNavigate } from "react-router";
 
-export function SignupForm() {
+export function SignupForm({
+	redirectTo = "/onboarding",
+}: {
+	redirectTo?: string;
+} = {}) {
 	const { signUp, fetchStatus } = useSignUp();
 	const navigate = useNavigate();
 	const [error, setError] = useState<string | null>(null);
@@ -58,7 +62,7 @@ export function SignupForm() {
 			if (signUp.status === "complete") {
 				await signUp.finalize({
 					navigate: ({ decorateUrl }) => {
-						const url = decorateUrl("/onboarding");
+						const url = decorateUrl(redirectTo);
 						if (url.startsWith("http")) {
 							window.location.href = url;
 						} else {
