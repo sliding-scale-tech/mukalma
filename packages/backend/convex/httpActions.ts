@@ -12,28 +12,46 @@ export const processWahaWebhook = internalAction({
 		apiKey: v.string(),
 	},
 	handler: async (ctx, args) => {
-		const payload = JSON.parse(args.body) as {
-			event: string;
-			session: string;
-			payload: {
-				from: string;
-				body: string;
-				fromMe: boolean;
-				id: { id: string };
+		// Loosely typed: engines (WEBJS/NOWEB/GOWS) can shape this payload
+		// differently. We validate defensively below and log the raw payload
+		// on any mismatch instead of crashing or silently dropping the message.
+		let payload: {
+			event?: string;
+			session?: string;
+			payload?: {
+				from?: string;
+				body?: string;
+				fromMe?: boolean;
 			};
 		};
+		try {
+			payload = JSON.parse(args.body);
+		} catch (error) {
+			console.error(
+				"[waha webhook] invalid JSON body:",
+				args.body.slice(0, 500),
+			);
+			throw error;
+		}
 
-		if (payload.event !== "message" || payload.payload.fromMe) {
+		if (payload.event !== "message" || payload.payload?.fromMe) {
 			return;
 		}
 
 		const sessionName = payload.session;
-		const phone = payload.payload.from.replace("@c.us", "");
-		const messageBody = payload.payload.body;
+		const from = payload.payload?.from;
+		const messageBody = payload.payload?.body;
 
-		if (!sessionName || !phone || !messageBody) {
+		if (!sessionName || !from || !messageBody) {
+			// Engine payload shape didn't match what we expect — log it so we
+			// can update the parser instead of silently losing the message.
+			console.error(
+				`[waha webhook] unrecognized payload shape (missing session/from/body): ${JSON.stringify(payload).slice(0, 1000)}`,
+			);
 			return;
 		}
+
+		const phone = from.replace(/@.*/, "");
 
 		await ctx.runMutation(internal.wahaInternal.upsertThreadAndInsertMessage, {
 			wahaSessionName: sessionName,
