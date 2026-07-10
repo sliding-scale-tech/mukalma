@@ -60,6 +60,10 @@ export default defineSchema({
 		customerSessionId: v.union(v.string(), v.null()),
 		externalChatId: v.union(v.string(), v.null()),
 		customerDisplayName: v.union(v.string(), v.null()),
+		// Collected by the widget pre-chat form (web channel).
+		customerEmail: v.optional(v.union(v.string(), v.null())),
+		// Hostname of the page the widget was embedded on.
+		sourceDomain: v.optional(v.union(v.string(), v.null())),
 		agentUnreadCount: v.number(),
 		isAiTyping: v.boolean(),
 		lastMessageAt: v.number(),
@@ -69,6 +73,11 @@ export default defineSchema({
 	})
 		.index("by_tenant_and_status", ["tenantId", "status"])
 		.index("by_tenant_and_lastMessage", ["tenantId", "lastMessageAt"])
+		.index("by_tenant_status_lastMessage", [
+			"tenantId",
+			"status",
+			"lastMessageAt",
+		])
 		.index("by_tenant_and_externalChatId", ["tenantId", "externalChatId"])
 		.index("by_tenant_and_customerSession", ["tenantId", "customerSessionId"])
 		.index("by_assignedTo", ["assignedToUserId"]),

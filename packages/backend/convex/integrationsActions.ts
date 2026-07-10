@@ -65,30 +65,58 @@ export const startWhatsAppSession = action({
 
 		const sessionName = `tenant-${tenant.slug}`;
 
-		const response = await wahaFetch("/api/sessions/start", {
-			method: "POST",
-			body: JSON.stringify({
-				name: sessionName,
-				config: {
-					webhooks: [
-						{
-							url: `${process.env.CONVEX_SITE_URL}/waha/webhook`,
-							events: ["message"],
-							// Our webhook endpoint rejects calls without this header.
-							customHeaders: [{ name: "X-Api-Key", value: wahaConfig.apiKey }],
-						},
-					],
-				},
-			}),
-		});
-
-		// 422 = session already started, that's fine — just proceed
-		if (!response.ok && response.status !== 422) {
-			const body = await response.text();
-			throw new ConvexError({
-				code: "WAHA_ERROR",
-				message: `Failed to start session: ${body}`,
+		// A session stuck in FAILED/STOPPED must be *restarted* — calling
+		// /start on it just returns 422 and leaves it dead, which used to make
+		// the UI poll for a QR that never arrives.
+		const existing = await wahaFetch(`/api/sessions/${sessionName}`);
+		if (existing.ok) {
+			const session = (await existing.json()) as { status: string };
+			const alive = ["WORKING", "SCAN_QR_CODE", "STARTING"].includes(
+				session.status,
+			);
+			if (!alive) {
+				const restart = await wahaFetch(
+					`/api/sessions/${sessionName}/restart`,
+					{
+						method: "POST",
+					},
+				);
+				if (!restart.ok) {
+					const body = await restart.text();
+					throw new ConvexError({
+						code: "WAHA_ERROR",
+						message: `Failed to restart session: ${body}`,
+					});
+				}
+			}
+		} else {
+			const response = await wahaFetch("/api/sessions/start", {
+				method: "POST",
+				body: JSON.stringify({
+					name: sessionName,
+					config: {
+						webhooks: [
+							{
+								url: `${process.env.CONVEX_SITE_URL}/waha/webhook`,
+								events: ["message"],
+								// Our webhook endpoint rejects calls without this header.
+								customHeaders: [
+									{ name: "X-Api-Key", value: wahaConfig.apiKey },
+								],
+							},
+						],
+					},
+				}),
 			});
+
+			// 422 = session already started, that's fine — just proceed
+			if (!response.ok && response.status !== 422) {
+				const body = await response.text();
+				throw new ConvexError({
+					code: "WAHA_ERROR",
+					message: `Failed to start session: ${body}`,
+				});
+			}
 		}
 
 		await ctx.runMutation(internal.integrationsInternal.setWahaSessionName, {

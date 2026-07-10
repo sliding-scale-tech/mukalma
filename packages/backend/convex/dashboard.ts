@@ -1,7 +1,9 @@
+import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { withTenant } from "./lib/customFunctions";
 
 const ONLINE_THRESHOLD_MS = 60_000;
+const DASHBOARD_PAGE_SIZE = 12;
 
 export const getStats = query({
 	args: {},
@@ -42,24 +44,36 @@ export const getStats = query({
 });
 
 export const listActiveThreads = query({
-	args: {},
-	handler: async (ctx) => {
+	args: {
+		// Convex pagination cursor from the previous page; null for page 1.
+		cursor: v.optional(v.union(v.string(), v.null())),
+	},
+	handler: async (ctx, args) => {
 		const { tenant } = await withTenant(ctx);
 
-		const threads = await ctx.db
+		// Cursor pagination over the activity index — stable when new threads
+		// arrive (no offset drift). The status filter runs on top of the index
+		// scan, so a page may occasionally hold fewer than 12 rows; the cursor
+		// still advances correctly.
+		const result = await ctx.db
 			.query("threads")
 			.withIndex("by_tenant_and_lastMessage", (q) =>
 				q.eq("tenantId", tenant._id),
 			)
-			.collect();
-
-		const active = threads
-			.filter((t) => t.status === "open" || t.status === "escalated")
-			.sort((a, b) => b.lastMessageAt - a.lastMessageAt)
-			.slice(0, 20);
+			.order("desc")
+			.filter((q) =>
+				q.or(
+					q.eq(q.field("status"), "open"),
+					q.eq(q.field("status"), "escalated"),
+				),
+			)
+			.paginate({
+				cursor: args.cursor ?? null,
+				numItems: DASHBOARD_PAGE_SIZE,
+			});
 
 		const withPreview = await Promise.all(
-			active.map(async (thread) => {
+			result.page.map(async (thread) => {
 				const lastMessage = await ctx.db
 					.query("messages")
 					.withIndex("by_thread", (q) => q.eq("threadId", thread._id))
@@ -88,6 +102,10 @@ export const listActiveThreads = query({
 			}),
 		);
 
-		return withPreview;
+		return {
+			threads: withPreview,
+			continueCursor: result.continueCursor,
+			isDone: result.isDone,
+		};
 	},
 });

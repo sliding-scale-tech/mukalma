@@ -2,9 +2,16 @@ import { api } from "@mukalma/backend/convex/_generated/api";
 import type { Id } from "@mukalma/backend/convex/_generated/dataModel";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { ChatWidget } from "@mukalma/ui/composites/chat-widget";
+import { PreChatForm } from "@mukalma/ui/composites/pre-chat-form";
 import { useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useState } from "react";
 import { useCustomerSession } from "../hooks/useCustomerSession";
+import {
+	type CustomerDetails,
+	getSourceDomain,
+	getStoredCustomerDetails,
+	storeCustomerDetails,
+} from "../lib/customer";
 import { getSlugFromHostname } from "../lib/slug";
 
 export default function StandaloneChatPage() {
@@ -14,6 +21,14 @@ export default function StandaloneChatPage() {
 		slug ? { slug } : "skip",
 	);
 	const session = useCustomerSession(slug);
+	const [details, setDetails] = useState<CustomerDetails | null>(() =>
+		typeof window !== "undefined" ? getStoredCustomerDetails() : null,
+	);
+
+	const handleDetailsSubmit = useCallback((d: CustomerDetails) => {
+		storeCustomerDetails(d);
+		setDetails(d);
+	}, []);
 
 	if (!slug) {
 		return (
@@ -41,6 +56,17 @@ export default function StandaloneChatPage() {
 		);
 	}
 
+	if (!details) {
+		return (
+			<PreChatForm
+				tenantName={tenant.name}
+				logoUrl={tenant.logoUrl}
+				theme={tenant.widgetTheme ?? undefined}
+				onSubmit={handleDetailsSubmit}
+			/>
+		);
+	}
+
 	return (
 		<ChatPage
 			tenantName={tenant.name}
@@ -48,6 +74,7 @@ export default function StandaloneChatPage() {
 			tenantTheme={tenant.widgetTheme ?? undefined}
 			tenantId={session.tenantId}
 			sessionId={session.sessionId}
+			details={details}
 		/>
 	);
 }
@@ -58,6 +85,7 @@ function ChatPage({
 	tenantTheme,
 	tenantId,
 	sessionId,
+	details,
 }: {
 	tenantName: string;
 	tenantLogo: string | null;
@@ -67,6 +95,7 @@ function ChatPage({
 	} | null;
 	tenantId: Id<"tenants">;
 	sessionId: string;
+	details: CustomerDetails;
 }) {
 	const getOrCreate = useMutation(api.threads.getOrCreatePublic);
 	const sendCustomer = useMutation(api.messages.sendCustomer);
@@ -80,7 +109,13 @@ function ChatPage({
 	} | null>(null);
 
 	useEffect(() => {
-		getOrCreate({ tenantId, sessionId }).then((result) => {
+		getOrCreate({
+			tenantId,
+			sessionId,
+			customerName: details.name,
+			customerEmail: details.email,
+			sourceDomain: getSourceDomain(false),
+		}).then((result) => {
 			setThreadId(result.threadId);
 			setThreadMeta({
 				status: result.status,
@@ -88,7 +123,7 @@ function ChatPage({
 				isAiTyping: result.isAiTyping,
 			});
 		});
-	}, [getOrCreate, tenantId, sessionId]);
+	}, [getOrCreate, tenantId, sessionId, details]);
 
 	const messages = useQuery(
 		api.messages.listPublic,
@@ -122,7 +157,13 @@ function ChatPage({
 	const handleNewConversation = useCallback(() => {
 		setThreadId(null);
 		setThreadMeta(null);
-		getOrCreate({ tenantId, sessionId }).then((result) => {
+		getOrCreate({
+			tenantId,
+			sessionId,
+			customerName: details.name,
+			customerEmail: details.email,
+			sourceDomain: getSourceDomain(false),
+		}).then((result) => {
 			setThreadId(result.threadId);
 			setThreadMeta({
 				status: result.status,
@@ -130,7 +171,7 @@ function ChatPage({
 				isAiTyping: result.isAiTyping,
 			});
 		});
-	}, [getOrCreate, tenantId, sessionId]);
+	}, [getOrCreate, tenantId, sessionId, details]);
 
 	if (!threadId || messages === undefined) {
 		return (

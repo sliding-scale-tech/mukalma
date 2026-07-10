@@ -51,128 +51,131 @@ export default function IntegrationsPage() {
 	);
 }
 
+// Every WAHA status collapses into exactly one view, so the UI can never
+// show contradictory controls (e.g. Connect and Disconnect together for a
+// "failed" session, which the old per-button conditions allowed).
+type ConnectionView =
+	| "loading"
+	| "disconnected"
+	| "connecting"
+	| "scan_qr"
+	| "connected";
+
+function toView(status: string): ConnectionView {
+	if (status === "connected" || status === "working") return "connected";
+	if (status === "scan_qr") return "scan_qr";
+	if (status === "starting") return "connecting";
+	// failed / stopped / disconnected / anything unknown → offer Connect
+	return "disconnected";
+}
+
 function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 	const startSession = useAction(api.integrationsActions.startWhatsAppSession);
 	const getQR = useAction(api.integrationsActions.getWhatsAppQR);
-	const checkStatus = useAction(api.integrationsActions.checkWhatsAppStatus);
 	const stopSession = useAction(api.integrationsActions.stopWhatsAppSession);
 
-	const [status, setStatus] = useState<string>("loading");
+	const [view, setView] = useState<ConnectionView>("loading");
 	const [qr, setQr] = useState<string | null>(null);
-	const [loading, setLoading] = useState(false);
-	const [refreshingQr, setRefreshingQr] = useState(false);
+	// Serializes operations: while one is in flight every button is disabled,
+	// so connect/disconnect/refresh can never race each other.
+	const [busy, setBusy] = useState<"connect" | "disconnect" | "refresh" | null>(
+		null,
+	);
 
-	const refreshStatus = useCallback(async () => {
+	// Single round-trip state fetch: getWhatsAppQR returns both status and
+	// (when applicable) the QR — no separate checkStatus call needed.
+	const fetchState = useCallback(async (): Promise<ConnectionView> => {
 		try {
-			const result = await checkStatus();
-			setStatus(result.status);
-			if (result.status === "scan_qr") {
-				const qrResult = await getQR();
-				setQr(qrResult.qr);
-				setStatus(qrResult.status);
-			}
+			const result = await getQR();
+			const next = toView(result.status);
+			setQr(next === "scan_qr" ? result.qr : null);
+			setView(next);
+			return next;
 		} catch {
-			setStatus("disconnected");
+			setQr(null);
+			setView("disconnected");
+			return "disconnected";
 		}
-	}, [checkStatus, getQR]);
+	}, [getQR]);
 
 	useEffect(() => {
-		refreshStatus();
-	}, [refreshStatus]);
+		fetchState();
+	}, [fetchState]);
 
+	// While waiting for a scan: one combined poll per tick keeps the QR fresh
+	// (WhatsApp QRs expire in ~20-60s) and detects the scan. Bounded so an
+	// abandoned tab doesn't poll forever.
 	useEffect(() => {
-		if (status !== "scan_qr") return;
-		// WhatsApp QR codes expire after roughly 20-60s, so keep pulling a
-		// fresh one while waiting — not just polling connection status —
-		// otherwise the code on screen can silently go stale and unscannable.
+		if (view !== "scan_qr") return;
+		const startedAt = Date.now();
 		const id = setInterval(async () => {
-			const result = await checkStatus();
-			if (result.status === "connected") {
-				setStatus("connected");
-				setQr(null);
+			if (Date.now() - startedAt > 3 * 60_000) {
 				clearInterval(id);
+				setQr(null);
+				setView("disconnected");
+				toast.error("QR scan timed out. Click Connect to try again.");
 				return;
 			}
-			if (result.status === "scan_qr") {
-				const qrResult = await getQR();
-				if (qrResult.qr) setQr(qrResult.qr);
-			}
-		}, 5000);
+			const next = await fetchState();
+			if (next !== "scan_qr") clearInterval(id);
+		}, 4000);
 		return () => clearInterval(id);
-	}, [status, checkStatus, getQR]);
+	}, [view, fetchState]);
 
-	const handleRefreshQr = async () => {
-		setRefreshingQr(true);
+	const handleRefresh = async () => {
+		if (busy) return;
+		setBusy("refresh");
 		try {
-			const qrResult = await getQR();
-			if (qrResult.status === "connected") {
-				setStatus("connected");
-				setQr(null);
-			} else if (qrResult.qr) {
-				setQr(qrResult.qr);
-				setStatus("scan_qr");
-			} else {
-				toast.error(
-					"No QR code available. Try disconnecting and reconnecting.",
-				);
-			}
-		} catch (err) {
-			toast.error(
-				err instanceof Error ? err.message : "Failed to refresh QR code",
-			);
+			await fetchState();
 		} finally {
-			setRefreshingQr(false);
+			setBusy(null);
 		}
 	};
 
 	const handleStart = async () => {
-		setLoading(true);
-		setStatus("connecting");
+		if (busy) return;
+		setBusy("connect");
+		setView("connecting");
+		setQr(null);
 		try {
 			await startSession();
-			// Poll until WAHA reaches SCAN_QR_CODE (can take a few seconds)
-			let attempts = 0;
-			while (attempts < 15) {
-				await new Promise((r) => setTimeout(r, 2000));
-				const qrResult = await getQR();
-				if (qrResult.qr) {
-					setQr(qrResult.qr);
-					setStatus("scan_qr");
-					break;
-				}
-				if (qrResult.status === "connected") {
-					setStatus("connected");
-					break;
-				}
-				attempts++;
+			// Poll until WAHA reaches SCAN_QR_CODE or resumes WORKING.
+			for (let attempt = 0; attempt < 20; attempt++) {
+				await new Promise((r) => setTimeout(r, 1500));
+				const next = await fetchState();
+				if (next === "scan_qr" || next === "connected") return;
+				// fetchState may briefly report "disconnected" while the session
+				// is still starting — keep the connecting view during the poll.
+				setView("connecting");
 			}
-			if (attempts >= 15) {
-				toast.error("Timed out waiting for QR code. Try again.");
-				setStatus("disconnected");
-			}
+			setView("disconnected");
+			toast.error("Timed out waiting for QR code. Try again.");
 		} catch (err) {
 			toast.error(
 				err instanceof Error ? err.message : "Failed to start session",
 			);
-			setStatus("disconnected");
+			setView("disconnected");
 		} finally {
-			setLoading(false);
+			setBusy(null);
 		}
 	};
 
 	const handleStop = async () => {
-		setLoading(true);
+		if (busy) return;
+		setBusy("disconnect");
 		try {
 			await stopSession();
-			setStatus("disconnected");
 			setQr(null);
+			setView("disconnected");
 			toast.success("WhatsApp disconnected");
 		} catch (err) {
 			toast.error(
 				err instanceof Error ? err.message : "Failed to stop session",
 			);
+			// Unknown state after a failed stop — re-sync from the server.
+			await fetchState();
 		} finally {
-			setLoading(false);
+			setBusy(null);
 		}
 	};
 
@@ -184,17 +187,17 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 						<MessageSquare className="h-5 w-5 text-green-600" />
 						<CardTitle>WhatsApp</CardTitle>
 					</div>
-					<StatusBadge status={status} />
+					<StatusBadge status={view} />
 				</div>
 				<CardDescription>
 					Connect your WhatsApp number to receive and reply to messages.
 				</CardDescription>
 			</CardHeader>
 			<CardContent className="space-y-4">
-				{(status === "loading" || status === "connecting") && (
+				{(view === "loading" || view === "connecting") && (
 					<div className="flex flex-col items-center justify-center gap-2 py-8">
 						<Loader2 className="h-6 w-6 animate-spin" />
-						{status === "connecting" && (
+						{view === "connecting" && (
 							<p className="text-muted-foreground text-sm">
 								Starting session, waiting for QR…
 							</p>
@@ -202,7 +205,7 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 					</div>
 				)}
 
-				{status === "scan_qr" && qr && (
+				{view === "scan_qr" && qr && (
 					<div className="flex flex-col items-center gap-3">
 						<p className="text-sm">Scan this QR code with WhatsApp:</p>
 						<div className="rounded-lg border bg-white p-4">
@@ -213,16 +216,16 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 							/>
 						</div>
 						<p className="text-muted-foreground text-xs">
-							Waiting for scan... refreshing automatically every 5 seconds.
+							Waiting for scan... refreshing automatically.
 						</p>
 						{isAdmin && (
 							<Button
 								variant="outline"
 								size="sm"
-								onClick={handleRefreshQr}
-								disabled={refreshingQr}
+								onClick={handleRefresh}
+								disabled={busy !== null}
 							>
-								{refreshingQr ? (
+								{busy === "refresh" ? (
 									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 								) : (
 									<RefreshCw className="mr-2 h-4 w-4" />
@@ -233,7 +236,7 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 					</div>
 				)}
 
-				{status === "connected" && (
+				{view === "connected" && (
 					<div className="flex items-center gap-2 rounded-md bg-green-50 p-3 text-green-800 text-sm dark:bg-green-950 dark:text-green-200">
 						<CheckCircle2 className="h-4 w-4" />
 						WhatsApp is connected and receiving messages.
@@ -242,25 +245,24 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 
 				{isAdmin && (
 					<div className="flex gap-2">
-						{status !== "connected" &&
-							status !== "scan_qr" &&
-							status !== "connecting" && (
-								<Button onClick={handleStart} disabled={loading}>
-									{loading ? (
-										<Loader2 className="mr-2 h-4 w-4 animate-spin" />
-									) : (
-										<Plug className="mr-2 h-4 w-4" />
-									)}
-									Connect WhatsApp
-								</Button>
-							)}
-						{status !== "disconnected" && status !== "loading" && (
+						{/* Exactly one primary action per view — never both. */}
+						{view === "disconnected" && (
+							<Button onClick={handleStart} disabled={busy !== null}>
+								{busy === "connect" ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<Plug className="mr-2 h-4 w-4" />
+								)}
+								Connect WhatsApp
+							</Button>
+						)}
+						{(view === "connected" || view === "scan_qr") && (
 							<Button
 								variant="destructive"
 								onClick={handleStop}
-								disabled={loading}
+								disabled={busy !== null}
 							>
-								{loading ? (
+								{busy === "disconnect" ? (
 									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
 								) : (
 									<Unplug className="mr-2 h-4 w-4" />
@@ -268,9 +270,20 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 								Disconnect
 							</Button>
 						)}
-						<Button variant="outline" onClick={refreshStatus}>
-							Refresh Status
-						</Button>
+						{view !== "scan_qr" && (
+							<Button
+								variant="outline"
+								onClick={handleRefresh}
+								disabled={busy !== null}
+							>
+								{busy === "refresh" ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<RefreshCw className="mr-2 h-4 w-4" />
+								)}
+								Refresh Status
+							</Button>
+						)}
 					</div>
 				)}
 			</CardContent>
@@ -342,6 +355,9 @@ function StatusBadge({ status }: { status: string }) {
 	}
 	if (status === "loading") {
 		return <Badge variant="outline">Loading...</Badge>;
+	}
+	if (status === "connecting") {
+		return <Badge variant="secondary">Connecting...</Badge>;
 	}
 	return <Badge variant="outline">Disconnected</Badge>;
 }
