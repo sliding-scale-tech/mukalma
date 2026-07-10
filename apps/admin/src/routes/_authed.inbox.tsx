@@ -1,7 +1,7 @@
 import { api } from "@mukalma/backend/convex/_generated/api";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { useQuery } from "convex/react";
-import { Inbox, MessageCircle } from "lucide-react";
+import { Globe, Inbox, MessageCircle } from "lucide-react";
 import { useState } from "react";
 import { Outlet, useMatch, useNavigate } from "react-router";
 
@@ -131,6 +131,12 @@ export default function InboxPage() {
 												{formatRelative(thread.lastMessageAt)}
 											</span>
 										</div>
+										{thread.sourceDomain && (
+											<p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground/70">
+												<Globe className="h-2.5 w-2.5 shrink-0" />
+												{thread.sourceDomain}
+											</p>
+										)}
 										<div className="mt-0.5 flex items-center gap-1.5">
 											<p className="flex-1 truncate text-muted-foreground text-xs">
 												{thread.lastMessagePreview ?? "No messages yet"}

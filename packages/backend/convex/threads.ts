@@ -10,9 +10,17 @@ export const getOrCreatePublic = mutation({
 	args: {
 		tenantId: v.id("tenants"),
 		sessionId: v.string(),
+		customerName: v.optional(v.string()),
+		customerEmail: v.optional(v.string()),
+		sourceDomain: v.optional(v.string()),
 	},
 	handler: async (ctx, args) => {
 		const { tenant } = await requireCustomerSession(ctx, args);
+
+		const customerName = args.customerName?.trim().slice(0, 100) || undefined;
+		const customerEmail =
+			args.customerEmail?.trim().toLowerCase().slice(0, 200) || undefined;
+		const sourceDomain = args.sourceDomain?.trim().slice(0, 200) || undefined;
 
 		const existing = await ctx.db
 			.query("threads")
@@ -23,6 +31,21 @@ export const getOrCreatePublic = mutation({
 
 		const openThread = existing.find((t) => t.status !== "closed");
 		if (openThread) {
+			// Backfill details on returning visits (e.g. an older thread created
+			// before the pre-chat form, or details updated by the customer).
+			const patch: Record<string, string> = {};
+			if (customerName && customerName !== openThread.customerDisplayName) {
+				patch.customerDisplayName = customerName;
+			}
+			if (customerEmail && customerEmail !== openThread.customerEmail) {
+				patch.customerEmail = customerEmail;
+			}
+			if (sourceDomain && sourceDomain !== openThread.sourceDomain) {
+				patch.sourceDomain = sourceDomain;
+			}
+			if (Object.keys(patch).length > 0) {
+				await ctx.db.patch(openThread._id, patch);
+			}
 			return {
 				threadId: openThread._id,
 				status: openThread.status,
@@ -40,7 +63,9 @@ export const getOrCreatePublic = mutation({
 			assignedToUserId: null,
 			customerSessionId: args.sessionId,
 			externalChatId: null,
-			customerDisplayName: null,
+			customerDisplayName: customerName ?? null,
+			customerEmail: customerEmail ?? null,
+			sourceDomain: sourceDomain ?? null,
 			agentUnreadCount: 0,
 			isAiTyping: false,
 			lastMessageAt: now,
@@ -224,6 +249,28 @@ export const assignToMe = mutation({
 			throw new ConvexError({ code: "NOT_FOUND", message: "Thread not found" });
 		}
 		await ctx.db.patch(args.threadId, { assignedToUserId: user._id });
+	},
+});
+
+export const rename = mutation({
+	args: {
+		threadId: v.id("threads"),
+		displayName: v.string(),
+	},
+	handler: async (ctx, args) => {
+		const { tenant } = await withTenant(ctx);
+		const thread = await ctx.db.get(args.threadId);
+		if (!thread || thread.tenantId !== tenant._id) {
+			throw new ConvexError({ code: "NOT_FOUND", message: "Thread not found" });
+		}
+		const trimmed = args.displayName.trim().slice(0, 100);
+		if (!trimmed) {
+			throw new ConvexError({
+				code: "EMPTY",
+				message: "Name cannot be empty",
+			});
+		}
+		await ctx.db.patch(args.threadId, { customerDisplayName: trimmed });
 	},
 });
 

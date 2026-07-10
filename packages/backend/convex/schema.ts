@@ -60,6 +60,10 @@ export default defineSchema({
 		customerSessionId: v.union(v.string(), v.null()),
 		externalChatId: v.union(v.string(), v.null()),
 		customerDisplayName: v.union(v.string(), v.null()),
+		// Collected by the widget pre-chat form (web channel).
+		customerEmail: v.optional(v.union(v.string(), v.null())),
+		// Hostname of the page the widget was embedded on.
+		sourceDomain: v.optional(v.union(v.string(), v.null())),
 		agentUnreadCount: v.number(),
 		isAiTyping: v.boolean(),
 		lastMessageAt: v.number(),

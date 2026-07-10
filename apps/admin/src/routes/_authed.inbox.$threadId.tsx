@@ -13,7 +13,18 @@ import { Skeleton } from "@mukalma/ui/components/skeleton";
 import { Textarea } from "@mukalma/ui/components/textarea";
 import { ChatMessageBubble } from "@mukalma/ui/composites/chat-message-bubble";
 import { useMutation, useQuery } from "convex/react";
-import { CheckCircle2, Loader2, RotateCcw, Send, UserPlus } from "lucide-react";
+import {
+	Check,
+	CheckCircle2,
+	Globe,
+	Loader2,
+	Mail,
+	Pencil,
+	RotateCcw,
+	Send,
+	UserPlus,
+	X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { toast } from "sonner";
@@ -41,9 +52,12 @@ export default function InboxThreadPage() {
 	const reassign = useMutation(api.threads.reassign);
 	const closeThread = useMutation(api.threads.close);
 	const reopenThread = useMutation(api.threads.reopen);
+	const renameThread = useMutation(api.threads.rename);
 
 	const [input, setInput] = useState("");
 	const [sending, setSending] = useState(false);
+	const [editingName, setEditingName] = useState(false);
+	const [nameInput, setNameInput] = useState("");
 	const bottomRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -111,6 +125,39 @@ export default function InboxThreadPage() {
 		statusBadgeStyle[thread.status as keyof typeof statusBadgeStyle] ??
 		statusBadgeStyle.closed;
 
+	const isWhatsApp = thread.channel === "whatsapp";
+	// Only digits = a resolved real phone number; an unresolved @lid JID is
+	// WhatsApp's anonymized ID and not worth showing as a "number".
+	const realNumber =
+		isWhatsApp && thread.externalChatId && /^\d+$/.test(thread.externalChatId)
+			? `+${thread.externalChatId}`
+			: null;
+	// Only show the number separately when the display name is a nickname
+	// (i.e. no longer the default "+<number>" we set on thread creation).
+	const showRealNumber =
+		realNumber !== null && thread.customerDisplayName !== realNumber;
+
+	const startEditName = () => {
+		setNameInput(thread.customerDisplayName ?? "");
+		setEditingName(true);
+	};
+
+	const saveNickname = async () => {
+		const trimmed = nameInput.trim();
+		if (!trimmed) {
+			setEditingName(false);
+			return;
+		}
+		try {
+			await renameThread({ threadId: thread._id, displayName: trimmed });
+			toast.success("Name updated");
+		} catch (err) {
+			toast.error(err instanceof Error ? err.message : "Rename failed");
+		} finally {
+			setEditingName(false);
+		}
+	};
+
 	return (
 		<div className="flex h-full flex-col">
 			{/* Header */}
@@ -120,10 +167,61 @@ export default function InboxThreadPage() {
 						{(thread.customerDisplayName ?? "?")[0].toUpperCase()}
 					</div>
 					<div>
-						<div className="font-semibold text-sm">
-							{thread.customerDisplayName ?? "Customer"}
+						<div className="flex items-center gap-1.5">
+							{editingName ? (
+								<>
+									<input
+										value={nameInput}
+										onChange={(e) => setNameInput(e.target.value)}
+										onKeyDown={(e) => {
+											if (e.key === "Enter") saveNickname();
+											if (e.key === "Escape") setEditingName(false);
+										}}
+										// biome-ignore lint/a11y/noAutofocus: focus follows an explicit edit click
+										autoFocus
+										className="h-6 w-40 rounded border bg-background px-2 font-semibold text-sm outline-none focus:border-primary"
+									/>
+									<button
+										type="button"
+										onClick={saveNickname}
+										aria-label="Save name"
+										className="text-emerald-500 hover:text-emerald-400"
+									>
+										<Check className="h-3.5 w-3.5" />
+									</button>
+									<button
+										type="button"
+										onClick={() => setEditingName(false)}
+										aria-label="Cancel"
+										className="text-muted-foreground hover:text-foreground"
+									>
+										<X className="h-3.5 w-3.5" />
+									</button>
+								</>
+							) : (
+								<>
+									<span className="font-semibold text-sm">
+										{thread.customerDisplayName ?? "Customer"}
+									</span>
+									{showRealNumber && (
+										<span className="text-muted-foreground text-xs">
+											{realNumber}
+										</span>
+									)}
+									{isWhatsApp && (
+										<button
+											type="button"
+											onClick={startEditName}
+											aria-label="Edit name"
+											className="text-muted-foreground/60 transition-colors hover:text-foreground"
+										>
+											<Pencil className="h-3 w-3" />
+										</button>
+									)}
+								</>
+							)}
 						</div>
-						<div className="mt-0.5 flex items-center gap-1.5">
+						<div className="mt-0.5 flex flex-wrap items-center gap-1.5">
 							<span
 								className={`rounded-full px-2 py-0.5 font-medium text-xs ${badgeClass}`}
 							>
@@ -132,6 +230,18 @@ export default function InboxThreadPage() {
 							<Badge variant="outline" className="text-xs capitalize">
 								{thread.channel}
 							</Badge>
+							{thread.customerEmail && (
+								<Badge variant="outline" className="gap-1 text-xs">
+									<Mail className="h-2.5 w-2.5" />
+									{thread.customerEmail}
+								</Badge>
+							)}
+							{thread.sourceDomain && (
+								<Badge variant="outline" className="gap-1 text-xs">
+									<Globe className="h-2.5 w-2.5" />
+									{thread.sourceDomain}
+								</Badge>
+							)}
 						</div>
 					</div>
 				</div>

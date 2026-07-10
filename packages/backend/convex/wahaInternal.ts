@@ -5,7 +5,10 @@ import { internalMutation } from "./_generated/server";
 export const upsertThreadAndInsertMessage = internalMutation({
 	args: {
 		wahaSessionName: v.string(),
-		phone: v.string(),
+		// Reply target + thread key: bare phone digits, or a full JID
+		// (e.g. ...@lid) when the real number couldn't be resolved.
+		chatId: v.string(),
+		displayName: v.string(),
 		content: v.string(),
 	},
 	handler: async (ctx, args) => {
@@ -19,7 +22,7 @@ export const upsertThreadAndInsertMessage = internalMutation({
 			return;
 		}
 
-		const externalChatId = args.phone;
+		const externalChatId = args.chatId;
 
 		const existingThread = await ctx.db
 			.query("threads")
@@ -40,7 +43,7 @@ export const upsertThreadAndInsertMessage = internalMutation({
 				assignedToUserId: null,
 				customerSessionId: null,
 				externalChatId,
-				customerDisplayName: `+${args.phone}`,
+				customerDisplayName: args.displayName,
 				agentUnreadCount: 0,
 				isAiTyping: false,
 				lastMessageAt: now,

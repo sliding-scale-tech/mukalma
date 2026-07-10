@@ -6,6 +6,33 @@ import { Webhook } from "svix";
 import { internal } from "./_generated/api";
 import { internalAction } from "./_generated/server";
 
+/**
+ * WhatsApp hides sender phone numbers behind "LID" (linked identity) JIDs
+ * like 213743476670588@lid. WAHA keeps a LID→phone mapping per session —
+ * resolve it so agents see the customer's real number in the inbox.
+ * Returns bare digits, or null if the mapping isn't (yet) known.
+ */
+async function resolveLidToPhone(
+	sessionName: string,
+	lidJid: string,
+): Promise<string | null> {
+	const baseUrl = process.env.WAHA_BASE_URL;
+	const apiKey = process.env.WAHA_API_KEY;
+	if (!baseUrl || !apiKey) return null;
+	try {
+		const response = await fetch(
+			`${baseUrl}/api/${encodeURIComponent(sessionName)}/lids/${encodeURIComponent(lidJid)}`,
+			{ headers: { "X-Api-Key": apiKey } },
+		);
+		if (!response.ok) return null;
+		const data = (await response.json()) as { pn?: string | null };
+		const digits = data.pn?.replace(/@.*/, "").trim();
+		return digits ? digits : null;
+	} catch {
+		return null;
+	}
+}
+
 export const processWahaWebhook = internalAction({
 	args: {
 		body: v.string(),
@@ -51,11 +78,26 @@ export const processWahaWebhook = internalAction({
 			return;
 		}
 
-		const phone = from.replace(/@.*/, "");
+		// chatId is the reply target + thread key; displayName is what agents
+		// see. For LID senders, resolve the real phone number when possible;
+		// if unresolvable, keep the full @lid JID as chatId so replies still
+		// route correctly (a bare LID number + "@c.us" would be undeliverable).
+		let chatId = from.replace(/@.*/, "");
+		let displayName = `+${chatId}`;
+		if (from.endsWith("@lid")) {
+			const realPhone = await resolveLidToPhone(sessionName, from);
+			if (realPhone) {
+				chatId = realPhone;
+				displayName = `+${realPhone}`;
+			} else {
+				chatId = from;
+			}
+		}
 
 		await ctx.runMutation(internal.wahaInternal.upsertThreadAndInsertMessage, {
 			wahaSessionName: sessionName,
-			phone,
+			chatId,
+			displayName,
 			content: messageBody,
 		});
 	},
