@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react-router";
 import { AcceptInviteForm } from "@mukalma/ui/composites/accept-invite-form";
 import { Navigate } from "react-router";
+import { adminPath } from "../lib/adminUrl";
 
 export default function AcceptInvitePage() {
 	const { isLoaded, isSignedIn } = useAuth();
@@ -9,7 +10,7 @@ export default function AcceptInvitePage() {
 	}
 	return (
 		<div className="flex min-h-svh items-center justify-center p-4">
-			<AcceptInviteForm />
+			<AcceptInviteForm redirectTo={adminPath("/dashboard")} />
 		</div>
 	);
 }

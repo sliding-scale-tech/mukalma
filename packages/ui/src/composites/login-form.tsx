@@ -43,7 +43,11 @@ function GoogleIcon() {
 	);
 }
 
-export function LoginForm() {
+export function LoginForm({
+	redirectTo = "/dashboard",
+}: {
+	redirectTo?: string;
+} = {}) {
 	const { signIn, fetchStatus } = useSignIn();
 	const clerk = useClerk();
 	const navigate = useNavigate();
@@ -68,7 +72,7 @@ export function LoginForm() {
 			if (signIn.status === "complete") {
 				await signIn.finalize({
 					navigate: ({ decorateUrl }) => {
-						const url = decorateUrl("/dashboard");
+						const url = decorateUrl(redirectTo);
 						if (url.startsWith("http")) {
 							window.location.href = url;
 						} else {

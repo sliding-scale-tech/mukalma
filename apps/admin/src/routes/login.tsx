@@ -1,6 +1,7 @@
 import { useAuth } from "@clerk/react-router";
 import { LoginForm } from "@mukalma/ui/composites/login-form";
 import { Navigate } from "react-router";
+import { adminPath } from "../lib/adminUrl";
 
 export default function LoginPage() {
 	const { isLoaded, isSignedIn } = useAuth();
@@ -15,7 +16,7 @@ export default function LoginPage() {
 				</div>
 				<span className="font-semibold text-lg tracking-tight">Mukalma</span>
 			</div>
-			<LoginForm />
+			<LoginForm redirectTo={adminPath("/dashboard")} />
 		</div>
 	);
 }

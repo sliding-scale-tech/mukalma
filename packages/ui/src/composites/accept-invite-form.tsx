@@ -43,7 +43,11 @@ function GoogleIcon() {
 	);
 }
 
-export function AcceptInviteForm() {
+export function AcceptInviteForm({
+	redirectTo = "/dashboard",
+}: {
+	redirectTo?: string;
+} = {}) {
 	const [searchParams] = useSearchParams();
 	const ticket =
 		searchParams.get("__clerk_ticket") ?? searchParams.get("ticket");
@@ -73,7 +77,7 @@ export function AcceptInviteForm() {
 	const finalizeSession = async (resource: typeof signIn | typeof signUp) => {
 		await resource.finalize({
 			navigate: ({ decorateUrl }) => {
-				const url = decorateUrl("/dashboard");
+				const url = decorateUrl(redirectTo);
 				if (url.startsWith("http")) {
 					window.location.href = url;
 				} else {
