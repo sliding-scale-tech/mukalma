@@ -30,23 +30,35 @@ const statusBadgeStyle = {
 	closed: "bg-zinc-500/12 text-zinc-400",
 } as const;
 
+const INBOX_PAGE_SIZE = 20;
+
 export default function InboxPage() {
 	const match = useMatch("/inbox/:threadId");
 	const selectedId = match?.params.threadId;
 	const navigate = useNavigate();
 	const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+	const [limit, setLimit] = useState(INBOX_PAGE_SIZE);
 	const current = useQuery(api.tenants.getCurrent);
 
-	const threads = useQuery(
+	const result = useQuery(
 		api.threads.listForInbox,
 		current?.tenant
-			? { status: statusFilter === "all" ? undefined : statusFilter }
+			? {
+					status: statusFilter === "all" ? undefined : statusFilter,
+					limit,
+				}
 			: "skip",
 	);
+	const threads = result?.threads;
 
-	const openCount = threads?.filter(
-		(t) => t.status === "open" || t.status === "escalated",
-	).length;
+	const stats = useQuery(api.dashboard.getStats, current?.tenant ? {} : "skip");
+	const openCount =
+		stats !== undefined ? stats.open + stats.escalated : undefined;
+
+	const handleFilterChange = (filter: StatusFilter) => {
+		setStatusFilter(filter);
+		setLimit(INBOX_PAGE_SIZE);
+	};
 
 	return (
 		<div className="flex flex-1 overflow-hidden">
@@ -74,7 +86,7 @@ export default function InboxPage() {
 							<button
 								key={f.value}
 								type="button"
-								onClick={() => setStatusFilter(f.value)}
+								onClick={() => handleFilterChange(f.value)}
 								className={`rounded-md px-2.5 py-1 font-medium text-xs transition-colors ${
 									statusFilter === f.value
 										? "bg-accent text-foreground"
@@ -100,57 +112,68 @@ export default function InboxPage() {
 							<p className="text-muted-foreground text-sm">No conversations.</p>
 						</div>
 					) : (
-						threads.map((thread) => {
-							const isSelected = thread._id === selectedId;
-							const border =
-								statusBorderColor[
-									thread.status as keyof typeof statusBorderColor
-								] ?? "border-l-zinc-600";
-							return (
-								<button
-									key={thread._id}
-									type="button"
-									onClick={() => navigate(`/inbox/${thread._id}`)}
-									className={`flex w-full gap-3 border-border/30 border-b border-l-2 p-3.5 text-left transition-colors ${border} ${
-										isSelected ? "bg-accent" : "hover:bg-accent/50"
-									}`}
-								>
-									<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent font-semibold text-muted-foreground text-xs">
-										{(thread.customerDisplayName ?? "?")[0].toUpperCase()}
-									</div>
-									<div className="min-w-0 flex-1">
-										<div className="flex items-center justify-between gap-2">
-											<span
-												className={`truncate text-sm ${isSelected || (thread.agentUnreadCount > 0) ? "font-semibold" : "font-medium"}`}
-											>
-												{thread.customerDisplayName ??
-													thread.customerSessionId ??
-													"Customer"}
-											</span>
-											<span className="shrink-0 text-muted-foreground/60 text-xs">
-												{formatRelative(thread.lastMessageAt)}
-											</span>
+						<>
+							{threads.map((thread) => {
+								const isSelected = thread._id === selectedId;
+								const border =
+									statusBorderColor[
+										thread.status as keyof typeof statusBorderColor
+									] ?? "border-l-zinc-600";
+								return (
+									<button
+										key={thread._id}
+										type="button"
+										onClick={() => navigate(`/inbox/${thread._id}`)}
+										className={`flex w-full gap-3 border-border/30 border-b border-l-2 p-3.5 text-left transition-colors ${border} ${
+											isSelected ? "bg-accent" : "hover:bg-accent/50"
+										}`}
+									>
+										<div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-accent font-semibold text-muted-foreground text-xs">
+											{(thread.customerDisplayName ?? "?")[0].toUpperCase()}
 										</div>
-										{thread.sourceDomain && (
-											<p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground/70">
-												<Globe className="h-2.5 w-2.5 shrink-0" />
-												{thread.sourceDomain}
-											</p>
-										)}
-										<div className="mt-0.5 flex items-center gap-1.5">
-											<p className="flex-1 truncate text-muted-foreground text-xs">
-												{thread.lastMessagePreview ?? "No messages yet"}
-											</p>
-											{thread.agentUnreadCount > 0 && (
-												<span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 py-0.5 font-bold text-[10px] text-primary-foreground">
-													{thread.agentUnreadCount}
+										<div className="min-w-0 flex-1">
+											<div className="flex items-center justify-between gap-2">
+												<span
+													className={`truncate text-sm ${isSelected || (thread.agentUnreadCount > 0) ? "font-semibold" : "font-medium"}`}
+												>
+													{thread.customerDisplayName ??
+														thread.customerSessionId ??
+														"Customer"}
 												</span>
+												<span className="shrink-0 text-muted-foreground/60 text-xs">
+													{formatRelative(thread.lastMessageAt)}
+												</span>
+											</div>
+											{thread.sourceDomain && (
+												<p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground/70">
+													<Globe className="h-2.5 w-2.5 shrink-0" />
+													{thread.sourceDomain}
+												</p>
 											)}
+											<div className="mt-0.5 flex items-center gap-1.5">
+												<p className="flex-1 truncate text-muted-foreground text-xs">
+													{thread.lastMessagePreview ?? "No messages yet"}
+												</p>
+												{thread.agentUnreadCount > 0 && (
+													<span className="inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1 py-0.5 font-bold text-[10px] text-primary-foreground">
+														{thread.agentUnreadCount}
+													</span>
+												)}
+											</div>
 										</div>
-									</div>
+									</button>
+								);
+							})}
+							{result?.hasMore && (
+								<button
+									type="button"
+									onClick={() => setLimit((l) => l + INBOX_PAGE_SIZE)}
+									className="w-full py-3 text-center font-medium text-muted-foreground text-xs transition-colors hover:bg-accent/50 hover:text-foreground"
+								>
+									Load more conversations
 								</button>
-							);
-						})
+							)}
+						</>
 					)}
 				</div>
 			</div>

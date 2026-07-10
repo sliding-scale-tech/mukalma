@@ -137,6 +137,8 @@ export const requestEscalationPublic = mutation({
 
 // --- Admin (Clerk auth) ---
 
+const INBOX_PAGE_SIZE = 20;
+
 export const listForInbox = query({
 	args: {
 		status: v.optional(
@@ -146,6 +148,7 @@ export const listForInbox = query({
 		assignedToUserId: v.optional(
 			v.union(v.id("users"), v.literal("unassigned"), v.literal("me")),
 		),
+		limit: v.optional(v.number()),
 	},
 	handler: async (ctx, args) => {
 		const { tenant, user } = await withTenant(ctx);
@@ -180,10 +183,21 @@ export const listForInbox = query({
 			);
 		}
 
-		filtered.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+		// Unread conversations first, newest activity first within each group —
+		// a new customer message bumps both, so it jumps straight to the top.
+		filtered.sort((a, b) => {
+			const aUnread = a.agentUnreadCount > 0 ? 1 : 0;
+			const bUnread = b.agentUnreadCount > 0 ? 1 : 0;
+			if (aUnread !== bUnread) return bUnread - aUnread;
+			return b.lastMessageAt - a.lastMessageAt;
+		});
+
+		const limit = Math.max(args.limit ?? INBOX_PAGE_SIZE, 1);
+		const hasMore = filtered.length > limit;
+		const pageThreads = filtered.slice(0, limit);
 
 		const threadsWithPreview = await Promise.all(
-			filtered.map(async (thread) => {
+			pageThreads.map(async (thread) => {
 				const lastMessage = await ctx.db
 					.query("messages")
 					.withIndex("by_thread", (q) => q.eq("threadId", thread._id))
@@ -205,7 +219,7 @@ export const listForInbox = query({
 			}),
 		);
 
-		return threadsWithPreview;
+		return { threads: threadsWithPreview, hasMore };
 	},
 });
 

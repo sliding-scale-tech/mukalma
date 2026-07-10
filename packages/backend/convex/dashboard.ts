@@ -1,7 +1,9 @@
+import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { withTenant } from "./lib/customFunctions";
 
 const ONLINE_THRESHOLD_MS = 60_000;
+const DASHBOARD_PAGE_SIZE = 12;
 
 export const getStats = query({
 	args: {},
@@ -42,8 +44,10 @@ export const getStats = query({
 });
 
 export const listActiveThreads = query({
-	args: {},
-	handler: async (ctx) => {
+	args: {
+		page: v.optional(v.number()),
+	},
+	handler: async (ctx, args) => {
 		const { tenant } = await withTenant(ctx);
 
 		const threads = await ctx.db
@@ -55,11 +59,18 @@ export const listActiveThreads = query({
 
 		const active = threads
 			.filter((t) => t.status === "open" || t.status === "escalated")
-			.sort((a, b) => b.lastMessageAt - a.lastMessageAt)
-			.slice(0, 20);
+			.sort((a, b) => b.lastMessageAt - a.lastMessageAt);
+
+		const totalCount = active.length;
+		const totalPages = Math.max(1, Math.ceil(totalCount / DASHBOARD_PAGE_SIZE));
+		const page = Math.min(Math.max(args.page ?? 0, 0), totalPages - 1);
+		const pageThreads = active.slice(
+			page * DASHBOARD_PAGE_SIZE,
+			(page + 1) * DASHBOARD_PAGE_SIZE,
+		);
 
 		const withPreview = await Promise.all(
-			active.map(async (thread) => {
+			pageThreads.map(async (thread) => {
 				const lastMessage = await ctx.db
 					.query("messages")
 					.withIndex("by_thread", (q) => q.eq("threadId", thread._id))
@@ -88,6 +99,6 @@ export const listActiveThreads = query({
 			}),
 		);
 
-		return withPreview;
+		return { threads: withPreview, page, totalPages, totalCount };
 	},
 });

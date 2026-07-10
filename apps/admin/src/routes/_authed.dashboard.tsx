@@ -1,5 +1,6 @@
 import { api } from "@mukalma/backend/convex/_generated/api";
 import { Badge } from "@mukalma/ui/components/badge";
+import { Button } from "@mukalma/ui/components/button";
 import { Skeleton } from "@mukalma/ui/components/skeleton";
 import {
 	Table,
@@ -10,6 +11,8 @@ import {
 	TableRow,
 } from "@mukalma/ui/components/table";
 import { useQuery } from "convex/react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useState } from "react";
 import { useNavigate } from "react-router";
 
 function formatRelative(ts: number): string {
@@ -42,10 +45,12 @@ export default function DashboardPage() {
 	const current = useQuery(api.tenants.getCurrent);
 	// Only fire once getCurrent has returned a real tenant — proves Convex has a valid JWT.
 	const stats = useQuery(api.dashboard.getStats, current?.tenant ? {} : "skip");
-	const activeThreads = useQuery(
+	const [page, setPage] = useState(0);
+	const activePage = useQuery(
 		api.dashboard.listActiveThreads,
-		current?.tenant ? {} : "skip",
+		current?.tenant ? { page } : "skip",
 	);
+	const activeThreads = activePage?.threads;
 	const navigate = useNavigate();
 
 	const today = new Date().toLocaleDateString("en-US", {
@@ -208,6 +213,38 @@ export default function DashboardPage() {
 								})}
 							</TableBody>
 						</Table>
+					)}
+
+					{/* Pagination */}
+					{activePage !== undefined && activePage.totalPages > 1 && (
+						<div className="flex items-center justify-between border-t px-5 py-2.5">
+							<span className="text-muted-foreground text-xs">
+								Page {activePage.page + 1} of {activePage.totalPages} ·{" "}
+								{activePage.totalCount} active
+							</span>
+							<div className="flex gap-1.5">
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() => setPage((p) => Math.max(p - 1, 0))}
+									disabled={activePage.page === 0}
+								>
+									<ChevronLeft className="h-3.5 w-3.5" />
+									Previous
+								</Button>
+								<Button
+									variant="outline"
+									size="sm"
+									onClick={() =>
+										setPage((p) => Math.min(p + 1, activePage.totalPages - 1))
+									}
+									disabled={activePage.page >= activePage.totalPages - 1}
+								>
+									Next
+									<ChevronRight className="h-3.5 w-3.5" />
+								</Button>
+							</div>
+						</div>
 					)}
 				</div>
 			</div>
