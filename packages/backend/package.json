@@ -11,20 +11,19 @@
 		"dev:setup": "convex dev --configure --until-success"
 	},
 	"dependencies": {
-		"@mukalma/shared": "workspace:*",
 		"@google/generative-ai": "^0.24.0",
+		"@mukalma/shared": "workspace:*",
 		"convex": "catalog:",
 		"dotenv": "catalog:",
 		"js-tiktoken": "^1.0.20",
 		"mammoth": "^1.9.0",
-		"pdf-parse": "^1.1.1",
 		"svix": "^1.82.0",
+		"unpdf": "^1.6.2",
 		"zod": "catalog:"
 	},
 	"devDependencies": {
 		"@mukalma/typescript-config": "workspace:*",
 		"@types/node": "^24.3.0",
-		"@types/pdf-parse": "^1.1.4",
 		"typescript": "catalog:"
 	}
 }

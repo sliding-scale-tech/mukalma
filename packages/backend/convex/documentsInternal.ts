@@ -1,6 +1,11 @@
 import { v } from "convex/values";
 
+import { internal } from "./_generated/api";
 import { internalMutation, internalQuery } from "./_generated/server";
+
+// Chunk rows carry 3072-dim float64 embeddings (~50 KB each as JSON), so all
+// chunk reads/writes are paged to stay under Convex per-transaction limits.
+const CHUNK_DELETE_BATCH = 100;
 
 export const getChunksByIds = internalQuery({
 	args: { ids: v.array(v.id("documentChunks")) },
@@ -23,17 +28,44 @@ export const getDocumentForProcessing = internalQuery({
 	},
 });
 
-export const deleteChunksByDocument = internalMutation({
+export const deleteChunksPage = internalMutation({
 	args: { documentId: v.id("documents") },
 	handler: async (ctx, args) => {
 		const chunks = await ctx.db
 			.query("documentChunks")
 			.withIndex("by_document", (q) => q.eq("documentId", args.documentId))
-			.collect();
+			.take(CHUNK_DELETE_BATCH);
 		for (const chunk of chunks) {
 			await ctx.db.delete(chunk._id);
 		}
-		return { deleted: chunks.length };
+		return {
+			deleted: chunks.length,
+			hasMore: chunks.length === CHUNK_DELETE_BATCH,
+		};
+	},
+});
+
+// Fire-and-forget full cleanup: deletes one page, reschedules itself until
+// every chunk for the document is gone. Used after document removal.
+export const deleteAllChunks = internalMutation({
+	args: { documentId: v.id("documents") },
+	handler: async (ctx, args) => {
+		const chunks = await ctx.db
+			.query("documentChunks")
+			.withIndex("by_document", (q) => q.eq("documentId", args.documentId))
+			.take(CHUNK_DELETE_BATCH);
+		for (const chunk of chunks) {
+			await ctx.db.delete(chunk._id);
+		}
+		if (chunks.length === CHUNK_DELETE_BATCH) {
+			await ctx.scheduler.runAfter(
+				0,
+				internal.documentsInternal.deleteAllChunks,
+				{
+					documentId: args.documentId,
+				},
+			);
+		}
 	},
 });
 
@@ -97,6 +129,7 @@ export const markProcessing = internalMutation({
 			status: "processing",
 			chunkCount: 0,
 			errorMessage: null,
+			processingStartedAt: Date.now(),
 		});
 	},
 });

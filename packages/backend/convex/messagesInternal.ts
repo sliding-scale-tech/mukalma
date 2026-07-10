@@ -17,6 +17,13 @@ export const getRecentForThread = internalQuery({
 	},
 });
 
+export const getMessageById = internalQuery({
+	args: { messageId: v.id("messages") },
+	handler: async (ctx, args) => {
+		return await ctx.db.get(args.messageId);
+	},
+});
+
 export const hasNewerCustomerMessage = internalQuery({
 	args: {
 		threadId: v.id("threads"),
@@ -26,14 +33,19 @@ export const hasNewerCustomerMessage = internalQuery({
 		const triggerMsg = await ctx.db.get(args.afterMessageId);
 		if (!triggerMsg) return false;
 
-		const messages = await ctx.db
+		// Walk newest-first until we find the most recent customer message —
+		// bounded scan, not a fixed window that a burst of messages can defeat.
+		const latestCustomer = await ctx.db
 			.query("messages")
 			.withIndex("by_thread", (q) => q.eq("threadId", args.threadId))
 			.order("desc")
-			.take(5);
+			.filter((q) => q.eq(q.field("senderType"), "customer"))
+			.first();
 
-		return messages.some(
-			(m) => m.senderType === "customer" && m.createdAt > triggerMsg.createdAt,
+		return (
+			latestCustomer !== null &&
+			latestCustomer._id !== triggerMsg._id &&
+			latestCustomer.createdAt >= triggerMsg.createdAt
 		);
 	},
 });

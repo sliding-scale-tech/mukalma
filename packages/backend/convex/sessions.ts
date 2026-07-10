@@ -70,6 +70,15 @@ export const refreshPublic = action({
 			});
 		}
 
+		// An expired token cannot be refreshed — otherwise a stolen token
+		// would stay valid forever.
+		if (args.expiresAt < Date.now()) {
+			throw new ConvexError({
+				code: "SESSION_EXPIRED",
+				message: "Session has expired",
+			});
+		}
+
 		const newExpiresAt = Date.now() + SESSION_TTL_MS;
 		const newToken = signSession({
 			sessionId: args.sessionId,
@@ -77,10 +86,19 @@ export const refreshPublic = action({
 			expiresAt: newExpiresAt,
 		});
 
-		await ctx.runMutation(internal.sessionsInternal.refreshSession, {
-			sessionId: args.sessionId,
-			expiresAt: newExpiresAt,
-		});
+		const { refreshed } = await ctx.runMutation(
+			internal.sessionsInternal.refreshSession,
+			{
+				sessionId: args.sessionId,
+				expiresAt: newExpiresAt,
+			},
+		);
+		if (!refreshed) {
+			throw new ConvexError({
+				code: "INVALID_SESSION",
+				message: "Session not found",
+			});
+		}
 
 		return { token: newToken, expiresAt: newExpiresAt };
 	},

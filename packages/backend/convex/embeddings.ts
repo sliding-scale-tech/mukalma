@@ -5,7 +5,24 @@ import { chunkText } from "../lib/chunking";
 import { createEmbeddings } from "../lib/gemini";
 import { extractTextFromBlob } from "../lib/textExtraction";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
+import type { ActionCtx } from "./_generated/server";
 import { internalAction } from "./_generated/server";
+
+// Each chunk row carries a 3072-dim float64 embedding (~50 KB serialized), so
+// inserts are split into small batches to stay under Convex mutation limits.
+const CHUNK_INSERT_BATCH = 20;
+
+async function deleteAllChunksNow(ctx: ActionCtx, documentId: Id<"documents">) {
+	let hasMore = true;
+	while (hasMore) {
+		const result = await ctx.runMutation(
+			internal.documentsInternal.deleteChunksPage,
+			{ documentId },
+		);
+		hasMore = result.hasMore;
+	}
+}
 
 export const processDocument = internalAction({
 	args: { documentId: v.id("documents") },
@@ -51,28 +68,27 @@ export const processDocument = internalAction({
 				throw new Error("Embedding count mismatch");
 			}
 
-			await ctx.runMutation(internal.documentsInternal.deleteChunksByDocument, {
-				documentId: args.documentId,
-			});
+			await deleteAllChunksNow(ctx, args.documentId);
 
-			await ctx.runMutation(internal.documentsInternal.insertChunks, {
-				tenantId: document.tenantId,
-				documentId: args.documentId,
-				chunks: textChunks.map((text, chunkIndex) => ({
-					chunkIndex,
-					text,
-					embedding: embeddings[chunkIndex] ?? [],
-				})),
-			});
+			const allChunks = textChunks.map((text, chunkIndex) => ({
+				chunkIndex,
+				text,
+				embedding: embeddings[chunkIndex] ?? [],
+			}));
+			for (let i = 0; i < allChunks.length; i += CHUNK_INSERT_BATCH) {
+				await ctx.runMutation(internal.documentsInternal.insertChunks, {
+					tenantId: document.tenantId,
+					documentId: args.documentId,
+					chunks: allChunks.slice(i, i + CHUNK_INSERT_BATCH),
+				});
+			}
 
 			await ctx.runMutation(internal.documentsInternal.markReady, {
 				documentId: args.documentId,
 				chunkCount: textChunks.length,
 			});
 		} catch (error) {
-			await ctx.runMutation(internal.documentsInternal.deleteChunksByDocument, {
-				documentId: args.documentId,
-			});
+			await deleteAllChunksNow(ctx, args.documentId);
 			await ctx.runMutation(internal.documentsInternal.markFailed, {
 				documentId: args.documentId,
 				errorMessage:
