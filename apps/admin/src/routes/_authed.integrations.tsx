@@ -16,6 +16,7 @@ import {
 	Loader2,
 	MessageSquare,
 	Plug,
+	RefreshCw,
 	Unplug,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -59,6 +60,7 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 	const [status, setStatus] = useState<string>("loading");
 	const [qr, setQr] = useState<string | null>(null);
 	const [loading, setLoading] = useState(false);
+	const [refreshingQr, setRefreshingQr] = useState(false);
 
 	const refreshStatus = useCallback(async () => {
 		try {
@@ -80,16 +82,48 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 
 	useEffect(() => {
 		if (status !== "scan_qr") return;
+		// WhatsApp QR codes expire after roughly 20-60s, so keep pulling a
+		// fresh one while waiting — not just polling connection status —
+		// otherwise the code on screen can silently go stale and unscannable.
 		const id = setInterval(async () => {
 			const result = await checkStatus();
 			if (result.status === "connected") {
 				setStatus("connected");
 				setQr(null);
 				clearInterval(id);
+				return;
+			}
+			if (result.status === "scan_qr") {
+				const qrResult = await getQR();
+				if (qrResult.qr) setQr(qrResult.qr);
 			}
 		}, 5000);
 		return () => clearInterval(id);
-	}, [status, checkStatus]);
+	}, [status, checkStatus, getQR]);
+
+	const handleRefreshQr = async () => {
+		setRefreshingQr(true);
+		try {
+			const qrResult = await getQR();
+			if (qrResult.status === "connected") {
+				setStatus("connected");
+				setQr(null);
+			} else if (qrResult.qr) {
+				setQr(qrResult.qr);
+				setStatus("scan_qr");
+			} else {
+				toast.error(
+					"No QR code available. Try disconnecting and reconnecting.",
+				);
+			}
+		} catch (err) {
+			toast.error(
+				err instanceof Error ? err.message : "Failed to refresh QR code",
+			);
+		} finally {
+			setRefreshingQr(false);
+		}
+	};
 
 	const handleStart = async () => {
 		setLoading(true);
@@ -179,8 +213,23 @@ function WhatsAppCard({ isAdmin }: { isAdmin: boolean }) {
 							/>
 						</div>
 						<p className="text-muted-foreground text-xs">
-							Waiting for scan... checking every 5 seconds.
+							Waiting for scan... refreshing automatically every 5 seconds.
 						</p>
+						{isAdmin && (
+							<Button
+								variant="outline"
+								size="sm"
+								onClick={handleRefreshQr}
+								disabled={refreshingQr}
+							>
+								{refreshingQr ? (
+									<Loader2 className="mr-2 h-4 w-4 animate-spin" />
+								) : (
+									<RefreshCw className="mr-2 h-4 w-4" />
+								)}
+								Refresh QR Code
+							</Button>
+						)}
 					</div>
 				)}
 
